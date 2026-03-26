@@ -58,6 +58,10 @@ def safe_int(value) -> str:
         return str(value)
 
 
+def compact_detail_lines(*parts: str) -> str:
+    return "\n".join(part for part in parts if part and part != "-")
+
+
 class OpportunityQueueView(QWidget):
     def __init__(self) -> None:
         super().__init__()
@@ -199,6 +203,8 @@ class OpportunityQueueView(QWidget):
 
         self.summary_group = QGroupBox("Resumen")
         summary_form = QFormLayout(self.summary_group)
+        summary_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        summary_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.lbl_score = QLabel("-")
         self.lbl_priority = QLabel("-")
         self.lbl_reason = QLabel("-")
@@ -436,7 +442,14 @@ class OpportunityQueueView(QWidget):
         self.lbl_score.setText(safe_text(row["score"]))
         self.lbl_priority.setText(safe_text(row["priority_label"]))
         self.lbl_reason.setText(safe_text(row["reason"]))
-        self.lbl_breakdown.setText(safe_text(row["score_breakdown"]))
+        self.lbl_breakdown.setText(
+            compact_detail_lines(
+                f"Prioridad base: {safe_text(row['score_event_base'])}",
+                f"Recencia: {safe_text(row['score_recency'])} | Precio: {safe_text(row['score_price_signal'])}",
+                f"Zona: {safe_text(row['score_zone_signal'])} | Microzona: {safe_text(row.get('score_microzone_signal'))}",
+                f"Geo: {safe_text(row['score_geo_signal'])} | Prediccion: {safe_text(row.get('score_predictive_signal'))}",
+            )
+        )
         self.lbl_zone.setText(
             f"{safe_text(row['zone_label'])} | {safe_text(row['zone_recommended_action'])}"
         )
@@ -457,17 +470,19 @@ class OpportunityQueueView(QWidget):
             f"{safe_text(row.get('microzone_recommended_action'))}"
         )
         self.lbl_microzone_scores.setText(
-            f"capture: {safe_text(row.get('microzone_capture_score'))} | "
-            f"concentracion: {safe_text(row.get('microzone_concentration_score'))} | "
-            f"confidence: {safe_text(row.get('microzone_confidence_score'))}"
+            compact_detail_lines(
+                f"capture {safe_text(row.get('microzone_capture_score'))}",
+                f"concentracion {safe_text(row.get('microzone_concentration_score'))}",
+                f"confidence {safe_text(row.get('microzone_confidence_score'))}",
+            )
         )
         self.lbl_prediction.setText(
-            f"oportunidad: {safe_text(row.get('predicted_opportunity_30d_score'))} "
-            f"({safe_text(row.get('predicted_opportunity_30d_band'))}) | "
-            f"zona: {safe_text(row.get('predicted_absorption_30d_score'))} "
-            f"({safe_text(row.get('predicted_absorption_30d_band'))}) | "
-            f"ventana: {safe_text(row.get('predicted_action_window_days'))}d | "
-            f"{safe_text(row.get('prediction_explanation'))}"
+            compact_detail_lines(
+                f"Oportunidad {safe_text(row.get('predicted_opportunity_30d_score'))} ({safe_text(row.get('predicted_opportunity_30d_band'))})",
+                f"Zona {safe_text(row.get('predicted_absorption_30d_score'))} ({safe_text(row.get('predicted_absorption_30d_band'))})",
+                f"Ventana recomendada: {safe_text(row.get('predicted_action_window_days'))} dias",
+                safe_text(row.get("prediction_explanation")),
+            )
         )
         self.lbl_asset.setText(
             f"{safe_text(row['asset_address'])} | {safe_text(row['asset_type'])}"
@@ -485,9 +500,9 @@ class OpportunityQueueView(QWidget):
         )
 
         self.comps_summary_label.setText(
-            f"comparables={safe_text(comps_summary.get('comparables_count'))} | "
-            f"EUR/m2 medio={safe_money(comps_summary.get('avg_comparable_price_m2'))} | "
-            f"modo={'estricto' if comps_summary.get('used_strict_mode') else 'ampliado'}"
+            f"Comparables: {safe_text(comps_summary.get('comparables_count'))} | "
+            f"EUR/m2 medio: {safe_money(comps_summary.get('avg_comparable_price_m2'))} | "
+            f"modo: {'estricto' if comps_summary.get('used_strict_mode') else 'ampliado'}"
         )
 
         self.comps_table.setRowCount(len(comps_rows))

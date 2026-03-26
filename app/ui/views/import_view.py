@@ -6,12 +6,14 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -71,7 +73,18 @@ class ImportView(QWidget):
         self.selected_files: list[str] = []
         self.inbox_dir = ensure_baseline_inbox_dir()
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        root_layout.addWidget(scroll)
+
+        page = QWidget()
+        scroll.setWidget(page)
+
+        layout = QVBoxLayout(page)
 
         title = QLabel("Importacion baseline")
         title.setStyleSheet("font-size: 22px; font-weight: bold;")
@@ -174,6 +187,8 @@ class ImportView(QWidget):
         self.history_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.history_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.history_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.history_table.setCornerButtonEnabled(False)
+        self.history_table.setMinimumHeight(170)
         self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.history_table.horizontalHeader().setSectionResizeMode(9, QHeaderView.Stretch)
 
@@ -182,7 +197,7 @@ class ImportView(QWidget):
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMinimumHeight(180)
+        self.log_box.setMinimumHeight(140)
         layout.addWidget(self.log_box)
 
         self.load_history()

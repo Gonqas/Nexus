@@ -39,6 +39,7 @@ class DashboardMetricCard(QWidget):
     def __init__(self, title: str, value: str, detail: str = "") -> None:
         super().__init__()
         self.setObjectName("MetricCard")
+        self.setMinimumHeight(112)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
@@ -74,6 +75,8 @@ class DashboardTablePanel(QGroupBox):
         self.table.setHorizontalHeaderLabels(columns)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
+        self.table.setCornerButtonEnabled(False)
+        self.table.setMinimumHeight(220)
         layout.addWidget(self.table)
 
     def load_rows(self, rows: list[list[str]]) -> None:

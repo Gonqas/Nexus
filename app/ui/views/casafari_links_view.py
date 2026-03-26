@@ -1,6 +1,8 @@
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QFrame,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -10,6 +12,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -36,11 +40,14 @@ def safe_text(value) -> str:
 class StatCard(QGroupBox):
     def __init__(self, title: str, value: str) -> None:
         super().__init__(title)
+        self.setMinimumHeight(96)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
 
         self.value_label = QLabel(value)
         self.value_label.setStyleSheet("font-size: 26px; font-weight: bold;")
         layout.addWidget(self.value_label)
+        layout.addStretch()
 
     def set_value(self, value: str) -> None:
         self.value_label.setText(value)
@@ -54,7 +61,18 @@ class CasafariLinksView(QWidget):
         self.rows: list[dict] = []
         self.selected_row_payload: dict | None = None
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        root_layout.addWidget(scroll)
+
+        page = QWidget()
+        scroll.setWidget(page)
+
+        layout = QVBoxLayout(page)
 
         title = QLabel("Reconciliacion Casafari")
         title.setStyleSheet("font-size: 22px; font-weight: bold;")
@@ -153,15 +171,17 @@ class CasafariLinksView(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setCornerButtonEnabled(False)
+        self.table.setMinimumHeight(250)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(16, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(17, QHeaderView.Stretch)
         self.table.itemSelectionChanged.connect(self.on_row_selected)
-        layout.addWidget(self.table)
 
         self.review_group = QGroupBox("Review manual")
         review_layout = QFormLayout(self.review_group)
+        review_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         self.review_target_label = QLabel("Selecciona una fila para revisar")
         self.review_target_label.setWordWrap(True)
@@ -190,11 +210,16 @@ class CasafariLinksView(QWidget):
         review_layout.addRow("Reviewer", self.review_reviewer_input)
         review_layout.addRow("Razon", self.review_reason_input)
         review_layout.addRow("", self.save_review_button)
-        layout.addWidget(self.review_group)
+
+        lower_splitter = QSplitter(Qt.Orientation.Vertical)
+        lower_splitter.addWidget(self.table)
+        lower_splitter.addWidget(self.review_group)
+        lower_splitter.setSizes([320, 240])
+        layout.addWidget(lower_splitter)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMinimumHeight(170)
+        self.log_box.setMinimumHeight(120)
         layout.addWidget(self.log_box)
 
         self.refresh_all()

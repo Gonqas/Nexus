@@ -151,7 +151,8 @@ def build_app_stylesheet() -> str:
     QTextEdit,
     QComboBox,
     QTableWidget,
-    QProgressBar {
+    QProgressBar,
+    QAbstractScrollArea {
         background-color: #ffffff;
         border: 1px solid #d7cdbf;
         border-radius: 10px;
@@ -191,6 +192,13 @@ def build_app_stylesheet() -> str:
         font-weight: 700;
     }
 
+    QTableCornerButton::section {
+        background-color: #f2e5d4;
+        border: none;
+        border-right: 1px solid #e4d6c5;
+        border-bottom: 1px solid #e4d6c5;
+    }
+
     QTableWidget {
         gridline-color: #ebdfd0;
         alternate-background-color: #faf7f2;
@@ -213,6 +221,23 @@ def build_app_stylesheet() -> str:
         border-radius: 8px;
     }
 
+    QCheckBox {
+        spacing: 8px;
+    }
+
+    QCheckBox::indicator {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        border: 1px solid #c8b9a5;
+        background-color: #ffffff;
+    }
+
+    QCheckBox::indicator:checked {
+        background-color: #d77b4d;
+        border: 1px solid #c86b42;
+    }
+
     QScrollArea,
     QStackedWidget {
         border: none;
@@ -223,5 +248,37 @@ def build_app_stylesheet() -> str:
         background: transparent;
         width: 6px;
         height: 6px;
+    }
+
+    QScrollBar:vertical {
+        background: transparent;
+        width: 10px;
+        margin: 0;
+    }
+
+    QScrollBar::handle:vertical {
+        background: #d6c7b5;
+        border-radius: 5px;
+        min-height: 30px;
+    }
+
+    QScrollBar:horizontal {
+        background: transparent;
+        height: 10px;
+        margin: 0;
+    }
+
+    QScrollBar::handle:horizontal {
+        background: #d6c7b5;
+        border-radius: 5px;
+        min-width: 30px;
+    }
+
+    QScrollBar::add-line,
+    QScrollBar::sub-line,
+    QScrollBar::add-page,
+    QScrollBar::sub-page {
+        background: transparent;
+        border: none;
     }
     """
