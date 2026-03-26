@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from core.services.comparables_service import get_comparables_payload
 from core.services.opportunity_queue_service_v2 import get_opportunity_queue_v2
 from db.models.asset import Asset
 from db.models.listing import Listing
@@ -25,8 +26,19 @@ def get_opportunity_detail_v2(session: Session, event_id: int, window_days: int 
         )
     )
 
+    comparables = {}
+    asset_id = row.get("asset_id")
+    if asset_id is not None:
+        comparables = get_comparables_payload(
+            session,
+            asset_id=asset_id,
+            limit=5,
+            strict_mode=True,
+        )
+
     return {
         "found": True,
         "queue_row": row,
         "event": event,
+        "comparables": comparables,
     }

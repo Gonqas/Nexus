@@ -4,7 +4,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from core.geography.madrid_street_catalog import StreetMatch
-from core.normalization.addresses import get_madrid_street_catalog, normalize_address_raw
+from core.normalization.addresses import (
+    get_madrid_street_catalog,
+    normalize_address_key,
+    normalize_address_raw,
+)
 from db.models.asset import Asset
 from db.models.building import Building
 
@@ -250,6 +254,11 @@ def normalize_existing_addresses(session: Session, limit: int | None = None) -> 
             normalized = normalize_address_raw(asset.address_raw)
             if normalized and normalized != asset.address_raw:
                 asset.address_raw = normalized
+                changed += 1
+
+            normalized_key = normalize_address_key(asset.address_raw)
+            if normalized_key and normalized_key != asset.address_norm:
+                asset.address_norm = normalized_key
                 changed += 1
 
         if asset.building and asset.building.address_base:

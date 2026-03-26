@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from rapidfuzz import fuzz
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from core.identity.listing_resolver import extract_external_id, find_existing_listing
 from core.normalization.addresses import normalize_address_key
 from core.normalization.phones import normalize_phone
+from core.normalization.portals import canonicalize_portal_label, normalize_portal_key
 from core.normalization.text import normalize_text_key
 from core.services.casafari_semantics_service import (
     classify_address_semantics,
@@ -89,8 +90,12 @@ def is_generic_contact_name(value: str | None) -> bool:
     return key in GENERIC_CONTACT_KEYS
 
 
-def normalize_portal_key(value: str | None) -> str | None:
-    return normalize_text_key(value)
+def portals_compatible(item_portal: str | None, listing_portal: str | None) -> bool:
+    item_key = normalize_portal_key(item_portal)
+    listing_key = normalize_portal_key(listing_portal)
+    if not item_key or not listing_key:
+        return True
+    return item_key == listing_key
 
 
 def safe_event_datetime(item: RawHistoryItem) -> datetime:
@@ -148,6 +153,13 @@ def get_or_create_contact_for_item(session: Session, item: RawHistoryItem) -> Co
 def candidate_listings_for_item(session: Session, item: RawHistoryItem) -> list[Listing]:
     candidates_by_id: dict[int, Listing] = {}
     address_meta = classify_address_semantics(item.address_raw)
+    address_norm = normalize_address_key(item.address_raw)
+    addr_fragment = build_address_fragment_key(item.address_raw)
+
+    def add_candidate(listing: Listing, *, require_portal_match: bool = False) -> None:
+        if require_portal_match and not portals_compatible(item.portal, listing.source_portal):
+            return
+        candidates_by_id[listing.id] = listing
 
     direct_listing = find_existing_listing(
         session=session,
@@ -175,28 +187,32 @@ def candidate_listings_for_item(session: Session, item: RawHistoryItem) -> list[
             .options(joinedload(Listing.asset), joinedload(Listing.contact))
             .where(Contact.phone_norm == phone_norm)
         )
-        if item.portal:
-            stmt = stmt.where(Listing.source_portal == item.portal)
         for listing in session.scalars(stmt.limit(150)).all():
-            candidates_by_id[listing.id] = listing
+            add_candidate(listing)
 
-    portal_key = normalize_portal_key(item.portal)
-    addr_fragment = build_address_fragment_key(item.address_raw)
-    if (portal_key or addr_fragment) and address_meta["address_precision"] != "zone_like":
+    if address_norm and address_meta["address_precision"] != "zone_like":
+        stmt = (
+            select(Listing)
+            .join(Asset, Listing.asset_id == Asset.id)
+            .options(joinedload(Listing.asset), joinedload(Listing.contact))
+            .where(Asset.address_norm == address_norm)
+        )
+        for listing in session.scalars(stmt.limit(120)).all():
+            add_candidate(listing)
+
+    if (item.portal or addr_fragment) and address_meta["address_precision"] != "zone_like":
         stmt = (
             select(Listing)
             .join(Asset, Listing.asset_id == Asset.id)
             .options(joinedload(Listing.asset), joinedload(Listing.contact))
         )
-        if item.portal:
-            stmt = stmt.where(Listing.source_portal == item.portal)
         for listing in session.scalars(stmt.limit(400)).all():
             asset_addr = listing.asset.address_raw if listing.asset else None
             if addr_fragment:
                 sim = address_similarity(item.address_raw, asset_addr)
                 if sim < 70:
                     continue
-            candidates_by_id[listing.id] = listing
+            add_candidate(listing, require_portal_match=bool(item.portal))
 
     if item.contact_name and not is_generic_contact_name(item.contact_name):
         name_key = normalize_text_key(item.contact_name)
@@ -206,10 +222,8 @@ def candidate_listings_for_item(session: Session, item: RawHistoryItem) -> list[
             .options(joinedload(Listing.asset), joinedload(Listing.contact))
             .where(Contact.name_norm == name_key)
         )
-        if item.portal:
-            stmt = stmt.where(Listing.source_portal == item.portal)
         for listing in session.scalars(stmt.limit(100)).all():
-            candidates_by_id[listing.id] = listing
+            add_candidate(listing)
 
     return list(candidates_by_id.values())
 
@@ -221,6 +235,8 @@ def score_candidate(session: Session, item: RawHistoryItem, listing: Listing) ->
     item_url = item.listing_url
     listing_url = listing.listing_url
     item_external_id = extract_external_id(item.listing_url)
+    item_address_norm = normalize_address_key(item.address_raw)
+    asset_address_norm = listing.asset.address_norm if listing.asset else None
 
     if item_url and listing_url and item_url == listing_url:
         score += 100
@@ -231,7 +247,7 @@ def score_candidate(session: Session, item: RawHistoryItem, listing: Listing) ->
         reasons.append("external_id exacto")
 
     if item.portal and listing.source_portal and normalize_portal_key(item.portal) == normalize_portal_key(listing.source_portal):
-        score += 15
+        score += 18
         reasons.append("portal exacto")
 
     item_phone_norm = normalize_phone(item.contact_phone)
@@ -253,6 +269,10 @@ def score_candidate(session: Session, item: RawHistoryItem, listing: Listing) ->
         if normalize_text_key(item.contact_name) == normalize_text_key(listing.contact.name_raw):
             score += 8
             reasons.append("nombre contacto")
+
+    if item_address_norm and asset_address_norm and item_address_norm == asset_address_norm:
+        score += 40
+        reasons.append("direccion core exacta")
 
     asset_addr = listing.asset.address_raw if listing.asset else None
     similarity = address_similarity(item.address_raw, asset_addr)
@@ -281,11 +301,13 @@ def score_candidate(session: Session, item: RawHistoryItem, listing: Listing) ->
             score -= 10
             reasons.append("precio lejos")
 
-    if listing.asset and item.address_raw:
-        raw_exact_key = normalize_address_key(item.address_raw)
-        if raw_exact_key and listing.asset.address_norm and raw_exact_key == listing.asset.address_norm:
-            score += 12
-            reasons.append("direccion core exacta")
+    if item_phone_norm and listing_phone_norm and item_phone_norm == listing_phone_norm and item_address_norm and asset_address_norm and item_address_norm == asset_address_norm:
+        score += 18
+        reasons.append("telefono+direccion")
+
+    if ratio is not None and ratio <= 0.12 and item_address_norm and asset_address_norm and item_address_norm == asset_address_norm:
+        score += 12
+        reasons.append("direccion+precio")
 
     return CandidateScore(listing=listing, score=score, reasons=reasons)
 
@@ -342,7 +364,7 @@ def apply_item_to_listing(item: RawHistoryItem, listing: Listing, contact: Conta
         listing.contact_id = contact.id
 
     if item.portal and not listing.source_portal:
-        listing.source_portal = item.portal
+        listing.source_portal = canonicalize_portal_label(item.portal)
 
     if item.listing_url and not listing.listing_url:
         listing.listing_url = item.listing_url

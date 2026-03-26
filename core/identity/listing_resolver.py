@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from core.normalization.portals import normalize_portal_key
 from core.normalization.urls import normalize_url
 from db.models.listing import Listing
 
@@ -55,16 +56,14 @@ def find_existing_listing(
             return listing
 
     if asset_id is not None and source_portal:
-        stmt = select(Listing).where(
-            Listing.asset_id == asset_id,
-            Listing.source_portal == source_portal,
-        )
+        stmt = select(Listing).where(Listing.asset_id == asset_id)
 
         if contact_id is not None:
             stmt = stmt.where(Listing.contact_id == contact_id)
 
-        listing = session.scalar(stmt.limit(1))
-        if listing is not None:
-            return listing
+        portal_key = normalize_portal_key(source_portal)
+        for listing in session.scalars(stmt.limit(25)).all():
+            if normalize_portal_key(listing.source_portal) == portal_key:
+                return listing
 
     return None

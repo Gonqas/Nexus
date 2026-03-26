@@ -75,7 +75,7 @@ def import_csv_file(
 ) -> dict:
     path = Path(file_path)
     if not path.exists():
-        raise FileNotFoundError(f"No existe el CSV: {path}")
+        raise FileNotFoundError(f"No existe el fichero baseline: {path}")
 
     file_hash = compute_file_hash(path)
 
@@ -103,7 +103,7 @@ def import_csv_file(
     if existing_success is not None:
         run.status = "skipped_duplicate"
         run.finished_at = utc_now()
-        run.message = "CSV ya importado anteriormente (mismo hash)"
+        run.message = "Fichero baseline ya importado anteriormente (mismo hash)"
         if delete_after_success:
             run.file_deleted = _delete_file_safely(path)
         session.commit()
@@ -122,10 +122,10 @@ def import_csv_file(
         }
 
     try:
-        _emit(progress_callback, f"Leyendo CSV: {path.name}", 0, 0)
+        _emit(progress_callback, f"Leyendo baseline: {path.name}", 0, 0)
         rows = load_leads_csv(path)
 
-        _emit(progress_callback, f"Importando filas: {path.name}", 0, len(rows))
+        _emit(progress_callback, f"Importando filas baseline: {path.name}", 0, len(rows))
         stats = import_leads_rows(session, rows)
 
         run.status = "success"
@@ -175,7 +175,7 @@ def import_csv_file(
             run.status = "error"
             run.finished_at = utc_now()
             run.error_text = str(exc)[:5000]
-            run.message = "Error en importación CSV"
+            run.message = "Error en importación baseline"
             session.commit()
 
         raise
@@ -204,7 +204,7 @@ def import_csv_files(
 
     for idx, file_path in enumerate(file_paths, start=1):
         path = Path(file_path)
-        _emit(progress_callback, f"Procesando CSV {idx}/{total}: {path.name}", idx - 1, total)
+        _emit(progress_callback, f"Procesando baseline {idx}/{total}: {path.name}", idx - 1, total)
 
         try:
             result = import_csv_file(
@@ -236,7 +236,7 @@ def import_csv_files(
                 }
             )
 
-    _emit(progress_callback, "Importación CSV finalizada", total, total)
+    _emit(progress_callback, "Importación baseline finalizada", total, total)
 
     return {
         "files": results,

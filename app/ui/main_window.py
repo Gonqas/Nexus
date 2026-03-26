@@ -6,6 +6,7 @@ from app.ui.views.dashboard_view import DashboardView
 from app.ui.views.import_view import ImportView
 from app.ui.views.opportunity_queue_view import OpportunityQueueView
 from app.ui.views.radar_view import RadarView
+from app.ui.views.search_view import SearchView
 from app.ui.views.sync_view import SyncView
 from app.ui.views.zones_view import ZonesView
 
@@ -19,6 +20,7 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.addTab(DashboardView(), "Dashboard")
         self.tabs.addTab(ImportView(), "Importar CSV")
+        self.tabs.addTab(SearchView(), "Buscar")
         self.tabs.addTab(CasafariLinksView(), "Casafari Links")
         self.tabs.addTab(AssetsView(), "Activos")
         self.tabs.addTab(ZonesView(), "Zonas")

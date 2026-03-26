@@ -9,6 +9,12 @@ from core.services.casafari_semantics_service import (
     classify_price_semantics,
     infer_match_reason_taxonomy,
 )
+from core.services.matching_metrics_service import (
+    add_match_review,
+    get_latest_match_review_map,
+    get_matching_metrics,
+    suggest_threshold_diagnostics,
+)
 from db.models.casafari_event_link import CasafariEventLink
 from db.models.listing import Listing
 from db.models.market_event import MarketEvent
@@ -115,6 +121,10 @@ def list_casafari_links(
         stmt = stmt.where(CasafariEventLink.match_status == status_filter)
 
     links = list(session.scalars(stmt).all())
+    latest_review_map = get_latest_match_review_map(
+        session,
+        [link.raw_history_item_id for link in links if link.raw_history_item_id is not None],
+    )
 
     phone_cache: dict[str, dict] = {}
     rows: list[dict] = []
@@ -147,6 +157,7 @@ def list_casafari_links(
         )
         match_band = classify_match_confidence_band(link.match_status, link.match_score)
         reason_taxonomy = infer_match_reason_taxonomy(session, item, link)
+        latest_review = latest_review_map.get(item.id if item else None, {})
 
         rows.append(
             {
@@ -178,10 +189,63 @@ def list_casafari_links(
                 "market_event_id": link.market_event_id,
                 "listing_label": listing_label,
                 "market_event_type": market_event.event_type if market_event else None,
+                "latest_review_label": latest_review.get("review_label"),
+                "latest_review_reason": latest_review.get("review_reason"),
+                "latest_review_reviewer": latest_review.get("reviewer"),
+                "latest_review_created_at": latest_review.get("created_at"),
             }
         )
 
     return rows
+
+
+def get_casafari_matching_review_summary(session: Session) -> dict:
+    metrics = get_matching_metrics(session)
+    diagnostics = suggest_threshold_diagnostics(session)
+    return {
+        "metrics": metrics,
+        "threshold_diagnostics": diagnostics,
+    }
+
+
+def save_casafari_match_review(
+    session: Session,
+    *,
+    raw_history_item_id: int | None,
+    listing_id: int | None,
+    asset_id: int | None,
+    review_label: str,
+    review_reason: str | None = None,
+    reviewer: str | None = None,
+    predicted_status: str | None = None,
+    predicted_score: float | None = None,
+) -> dict:
+    candidate_type = "listing" if listing_id else "raw_item"
+
+    row = add_match_review(
+        session,
+        review_label=review_label,
+        source_channel="casafari_history",
+        candidate_type=candidate_type,
+        raw_history_item_id=raw_history_item_id,
+        listing_id=listing_id,
+        asset_id=asset_id,
+        candidate_listing_id=listing_id,
+        candidate_asset_id=asset_id,
+        predicted_score=predicted_score,
+        predicted_status=predicted_status,
+        review_reason=review_reason,
+        reviewer=reviewer,
+    )
+    session.commit()
+
+    return {
+        "id": row.id,
+        "review_label": row.review_label,
+        "review_reason": row.review_reason,
+        "reviewer": row.reviewer,
+        "created_at": row.created_at,
+    }
 
 
 def rerun_pending_casafari_reconciliation(

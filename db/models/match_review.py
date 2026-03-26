@@ -22,32 +22,32 @@ class MatchReview(Base):
 
     raw_history_item_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("raw_history_item.id", ondelete="SET NULL"),
+        ForeignKey("raw_history_items.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     listing_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("listing.id", ondelete="SET NULL"),
+        ForeignKey("listings.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     asset_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("asset.id", ondelete="SET NULL"),
+        ForeignKey("assets.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
 
     candidate_listing_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("listing.id", ondelete="SET NULL"),
+        ForeignKey("listings.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     candidate_asset_id: Mapped[int | None] = mapped_column(
         Integer,
-        ForeignKey("asset.id", ondelete="SET NULL"),
+        ForeignKey("assets.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

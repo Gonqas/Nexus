@@ -30,12 +30,21 @@ def normalize_geo_text(value: str | None) -> str | None:
     text = text.replace("ª", " ")
     text = text.replace("'", " ")
     text = text.replace('"', " ")
+    text = re.sub(r"\b(c|cl|av|avda|pza|pl|ps|pso|ctra|trav|trva)/\s*", r"\1 ", text)
     text = text.replace("/", " / ")
+    text = re.sub(r"\bn\s*[ºo]\s*", " numero ", text)
+    text = re.sub(r"\bnum(?:ero)?\s+", " numero ", text)
 
     # OJO: no borrar comas ni guiones aquí, porque se usan para separar partes
     text = re.sub(r"[();:|]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
+    text = _cleanup_address_noise(text)
     return text or None
+
+
+def _split_address_parts_from_text(text: str) -> list[str]:
+    text = re.sub(r"\s*-\s*", ", ", text)
+    return [p.strip() for p in text.split(",") if p.strip()]
 
 
 def split_address_parts(value: str | None) -> list[str]:
@@ -44,9 +53,7 @@ def split_address_parts(value: str | None) -> list[str]:
         return []
 
     # Convertimos " - " en separador de partes para casos tipo "Lavapiés - Barrio"
-    text = re.sub(r"\s*-\s*", ", ", text)
-    parts = [p.strip() for p in text.split(",") if p.strip()]
-    return parts
+    return _split_address_parts_from_text(text)
 
 
 STREET_TYPE_ALIASES: dict[str, str] = {
@@ -65,6 +72,8 @@ STREET_TYPE_ALIASES: dict[str, str] = {
     "paseo": "paseo",
     "pl": "plaza",
     "pl.": "plaza",
+    "pza": "plaza",
+    "pza.": "plaza",
     "plaza": "plaza",
     "rda": "ronda",
     "rda.": "ronda",
@@ -87,11 +96,58 @@ STREET_TYPE_ALIASES: dict[str, str] = {
 }
 
 STREET_TYPE_PATTERN = re.compile(
-    r"^(calle|cl|c\.?|avenida|avda|av\.?|av|paseo|pso\.?|ps|plaza|pl\.?|pl|ronda|rda\.?|camino|cam\.?|carretera|ctra\.?|travesia|trav|trva\.?|via|glorieta|pasaje|cuesta|bulevar)\b",
+    r"^(calle|cl|c\.?|avenida|avda\.?|av\.?|av|paseo|pso\.?|ps|plaza|pza\.?|pl\.?|pl|ronda|rda\.?|camino|cam\.?|carretera|ctra\.?|travesia|trav\.?|trva\.?|via|glorieta|pasaje|cuesta|bulevar)(?=\s|$)",
     re.IGNORECASE,
 )
 
 HOUSE_NUMBER_PATTERN = re.compile(r"\b(\d{1,4})(?:\s*([a-zA-Z]))?\b")
+POSTAL_CODE_PATTERN = re.compile(r"\b28\d{3}\b")
+TRAILING_CITY_PATTERN = re.compile(
+    r"(?:,\s*|\s+)(?:madrid(?:\s+capital|\s+centro)?|espana|spain)\s*$",
+    re.IGNORECASE,
+)
+UNIT_ONLY_PATTERN = re.compile(
+    r"^(?:"
+    r"portal\s+\w+|"
+    r"bloque\s+\w+|"
+    r"esc(?:alera)?\s+\w+|"
+    r"pl(?:anta)?\s+\w+|"
+    r"piso\s+\w+|"
+    r"puerta\s+\w+|"
+    r"pta\.?\s*\w+|"
+    r"pto\.?\s*\w+|"
+    r"bajo(?:\s+\w+)?|"
+    r"bj(?:\s+\w+)?|"
+    r"entresuelo(?:\s+\w+)?|"
+    r"atico(?:\s+\w+)?|"
+    r"interior|exterior|"
+    r"izq(?:uierda)?|"
+    r"dcha|derecha|"
+    r"\d+\s*(?:o|º|ª)?\s*[a-z]{0,3}"
+    r")$",
+    re.IGNORECASE,
+)
+UNIT_TAIL_PATTERN = re.compile(
+    r"^(?:"
+    r"portal\s+\w+|"
+    r"bloque\s+\w+|"
+    r"esc(?:alera)?\s+\w+|"
+    r"pl(?:anta)?\s+\w+|"
+    r"piso\s+\w+|"
+    r"puerta\s+\w+|"
+    r"pta\.?\s*\w+|"
+    r"pto\.?\s*\w+|"
+    r"bajo(?:\s+\w+)?|"
+    r"bj(?:\s+\w+)?|"
+    r"entresuelo(?:\s+\w+)?|"
+    r"atico(?:\s+\w+)?|"
+    r"interior|exterior|"
+    r"izq(?:uierda)?|"
+    r"dcha|derecha|"
+    r"\d+\s*(?:o|º|ª)\s*[a-z]{0,3}"
+    r")(?:\b.*)?$",
+    re.IGNORECASE,
+)
 
 KNOWN_NEIGHBORHOODS: dict[str, tuple[str, str | None]] = {
     "lavapies": ("Embajadores", "Centro"),
@@ -165,6 +221,66 @@ KNOWN_NEIGHBORHOODS: dict[str, tuple[str, str | None]] = {
 }
 
 
+def _is_city_or_postal_only_part(value: str) -> bool:
+    clean = POSTAL_CODE_PATTERN.sub(" ", value)
+    clean = re.sub(r"\b(madrid(?:\s+capital|\s+centro)?|espana|spain)\b", " ", clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return not clean
+
+
+def _strip_trailing_unit_noise(value: str) -> str:
+    text = value.strip()
+    if not text or not STREET_TYPE_PATTERN.search(text):
+        return text
+
+    number_match = re.search(r"\b\d{1,4}[a-z]?\b", text)
+    if not number_match:
+        return text
+
+    prefix = text[:number_match.end()].strip()
+    tail = text[number_match.end():].strip(" ,")
+    if not tail or tail == "bis":
+        return text
+
+    if UNIT_TAIL_PATTERN.match(tail):
+        return prefix
+
+    return text
+
+
+def _cleanup_address_noise(text: str) -> str:
+    parts = _split_address_parts_from_text(text)
+    cleaned_parts: list[str] = []
+
+    for idx, raw_part in enumerate(parts):
+        part = raw_part.strip()
+        if not part:
+            continue
+
+        if _is_city_or_postal_only_part(part):
+            continue
+
+        if idx > 0 and UNIT_ONLY_PATTERN.match(part):
+            continue
+
+        part = _strip_trailing_unit_noise(part)
+        part = POSTAL_CODE_PATTERN.sub(" ", part)
+        if any(ch.isdigit() for ch in part):
+            part = TRAILING_CITY_PATTERN.sub("", part)
+        part = re.sub(r"\s+", " ", part).strip(" ,")
+
+        if part:
+            cleaned_parts.append(part)
+
+    if not cleaned_parts:
+        fallback = POSTAL_CODE_PATTERN.sub(" ", text)
+        fallback = TRAILING_CITY_PATTERN.sub("", fallback)
+        fallback = re.sub(r"\s+", " ", fallback).strip(" ,")
+        return fallback
+
+    return ", ".join(cleaned_parts)
+
+
 def canonical_street_type(value: str | None) -> str | None:
     text = normalize_geo_text(value)
     if not text:
@@ -179,6 +295,7 @@ def normalize_street_name_only(value: str | None) -> str | None:
 
     text = STREET_TYPE_PATTERN.sub("", text).strip()
     text = re.sub(r"\bnumero\b", " ", text)
+    text = re.sub(r"\b\d{1,4}[a-zA-Z]?\b", " ", text)
     text = re.sub(r"\bn[ºo]\b", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"^(de la|de las|de los|del|de l|de)\s+", "", text).strip()

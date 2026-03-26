@@ -82,6 +82,38 @@ def get_match_review_rows(session: Session) -> list[MatchReview]:
     )
 
 
+def get_latest_match_review_map(
+    session: Session,
+    raw_history_item_ids: list[int],
+) -> dict[int, dict[str, Any]]:
+    if not raw_history_item_ids:
+        return {}
+
+    rows = list(
+        session.scalars(
+            select(MatchReview)
+            .where(MatchReview.raw_history_item_id.in_(raw_history_item_ids))
+            .order_by(MatchReview.created_at.desc(), MatchReview.id.desc())
+        ).all()
+    )
+
+    latest: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        if row.raw_history_item_id is None or row.raw_history_item_id in latest:
+            continue
+
+        latest[row.raw_history_item_id] = {
+            "review_label": row.review_label,
+            "review_reason": row.review_reason,
+            "reviewer": row.reviewer,
+            "created_at": row.created_at,
+            "predicted_status": row.predicted_status,
+            "predicted_score": row.predicted_score,
+        }
+
+    return latest
+
+
 def get_matching_metrics(session: Session) -> dict[str, Any]:
     rows = get_match_review_rows(session)
 

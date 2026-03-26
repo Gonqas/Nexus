@@ -11,12 +11,17 @@ from db.session import SessionLocal
 from core.services.geography_enrichment_service import (
     backfill_assets_geography,
     backfill_buildings_geography,
+    normalize_existing_addresses,
 )
 
 
 def main() -> None:
     session = SessionLocal()
     try:
+        address_stats = normalize_existing_addresses(
+            session=session,
+            limit=None,
+        )
         building_stats = backfill_buildings_geography(
             session=session,
             only_missing=False,
@@ -29,6 +34,7 @@ def main() -> None:
         session.commit()
 
         print("Backfill completado")
+        print(address_stats)
         print(building_stats)
         print(asset_stats)
     except Exception:

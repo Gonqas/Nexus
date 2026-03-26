@@ -24,6 +24,10 @@ from core.config.settings import (
     CASAFARI_WAIT_AFTER_PAGINATION_MS,
     CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS,
 )
+from core.normalization.portals import (
+    canonicalize_portal_label,
+    normalize_portal_key as normalize_portal_key_base,
+)
 from core.normalization.text import normalize_text, normalize_text_key
 from core.normalization.urls import normalize_url
 
@@ -387,10 +391,7 @@ def normalize_name_key(value: str | None) -> str | None:
 
 
 def normalize_portal_key(value: str | None) -> str | None:
-    text = normalize_text_key(value)
-    if not text:
-        return None
-    return text
+    return normalize_portal_key_base(value)
 
 
 def build_address_fragment_key(value: str | None) -> str | None:
@@ -459,12 +460,12 @@ def extract_address_from_title(title: str | None) -> str | None:
 
 
 def extract_portal_and_contact(text: str) -> tuple[str | None, str | None]:
-    pattern = r"(Idealista|Fotocasa|Habitaclia|Milanuncios|Pisos\.com)\s*:?\s*([^\n\+€]+)?"
+    pattern = r"(Idealista|Fotocasa|Habitaclia|Milanuncios|Pisos\.com|Yaencontre)\s*:?\s*([^\n\+€]+)?"
     match = re.search(pattern, text, flags=re.IGNORECASE)
     if not match:
         return None, None
 
-    portal = normalize_text(match.group(1))
+    portal = canonicalize_portal_label(match.group(1))
     contact = normalize_text(match.group(2))
     return portal, contact
 
@@ -714,7 +715,7 @@ def normalize_network_item(record: dict, page_url: str, payload_url: str, page_n
     listing_url = normalize_url(str(pick_first_value(record, URL_KEYS) or ""))
     title = normalize_text(str(pick_first_value(record, TITLE_KEYS) or ""))
     address_raw = normalize_text(str(pick_first_value(record, ADDRESS_KEYS) or ""))
-    portal = normalize_text(str(pick_first_value(record, PORTAL_KEYS) or ""))
+    portal = canonicalize_portal_label(str(pick_first_value(record, PORTAL_KEYS) or ""))
     current_price = parse_price_value(pick_first_value(record, CURRENT_PRICE_KEYS))
     previous_price = parse_price_value(pick_first_value(record, PREVIOUS_PRICE_KEYS))
     event_datetime = parse_datetime_value(pick_first_value(record, DATETIME_KEYS))

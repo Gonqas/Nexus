@@ -18,26 +18,64 @@ def get_madrid_street_catalog() -> MadridStreetCatalog | None:
     return MadridStreetCatalog.from_file(CATALOG_PATH)
 
 
+def _format_parsed_address(
+    *,
+    street_type: str | None,
+    street_name: str | None,
+    house_number: str | None,
+    house_suffix: str | None,
+) -> str | None:
+    if not street_name:
+        return None
+
+    bits = []
+    if street_type:
+        bits.append(street_type)
+    bits.append(street_name)
+
+    text = " ".join(bits).strip()
+    if not text:
+        return None
+
+    if house_number:
+        suffix = house_suffix.lower() if house_suffix else ""
+        number = f"{house_number}{suffix}"
+        return f"{text}, {number}"
+
+    return text
+
+
 def extract_address_core(value: str | None) -> str | None:
     parsed = parse_address_text(value)
     if not parsed.clean_text:
         return None
 
-    if parsed.street_name and parsed.house_number:
-        if parsed.street_type:
-            return f"{parsed.street_type} {parsed.street_name}, {parsed.house_number}"
-        return f"{parsed.street_name}, {parsed.house_number}"
+    formatted = _format_parsed_address(
+        street_type=parsed.street_type,
+        street_name=parsed.street_name,
+        house_number=parsed.house_number,
+        house_suffix=parsed.house_suffix,
+    )
+    if formatted:
+        return formatted
 
-    if parsed.street_name:
-        if parsed.street_type:
-            return f"{parsed.street_type} {parsed.street_name}"
-        return parsed.street_name
-
-    return normalize_text(value)
+    return normalize_text(parsed.clean_text)
 
 
 def normalize_address_raw(value: str | None) -> str | None:
     parsed = parse_address_text(value)
+    if not parsed.clean_text:
+        return None
+
+    formatted = _format_parsed_address(
+        street_type=parsed.street_type,
+        street_name=parsed.street_name,
+        house_number=parsed.house_number,
+        house_suffix=parsed.house_suffix,
+    )
+    if formatted:
+        return normalize_text(formatted)
+
     return parsed.clean_text
 
 

@@ -37,12 +37,12 @@ class ImportView(QWidget):
 
         layout = QVBoxLayout(self)
 
-        title = QLabel("Importación CSV")
+        title = QLabel("Importación CSV / Excel")
         title.setStyleSheet("font-size: 22px; font-weight: bold;")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Usa el CSV como baseline enriquecido. Al terminar, la app reintenta "
+            "Usa el baseline CSV/Excel como fuente maestra enriquecida. Al terminar, la app reintenta "
             "reconciliar eventos Casafari pendientes y puede borrar el fichero físico."
         )
         subtitle.setStyleSheet("color: #666;")
@@ -50,7 +50,7 @@ class ImportView(QWidget):
         layout.addWidget(subtitle)
 
         controls = QHBoxLayout()
-        self.select_button = QPushButton("Seleccionar CSV(s)")
+        self.select_button = QPushButton("Seleccionar fichero(s)")
         self.select_button.clicked.connect(self.select_files)
 
         self.import_button = QPushButton("Importar seleccionados")
@@ -86,7 +86,7 @@ class ImportView(QWidget):
         self.progress_bar.setValue(0)
         layout.addWidget(self.progress_bar)
 
-        history_group = QGroupBox("Historial de importaciones CSV")
+        history_group = QGroupBox("Historial de importaciones baseline")
         history_layout = QVBoxLayout(history_group)
 
         self.history_table = QTableWidget(0, 10)
@@ -126,16 +126,16 @@ class ImportView(QWidget):
     def select_files(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            "Seleccionar CSV(s)",
+            "Seleccionar CSV/Excel",
             "",
-            "CSV Files (*.csv)",
+            "Tabular Files (*.csv *.xlsx *.xls)",
         )
         if not files:
             return
 
         self.selected_files = files
         self.selected_box.setPlainText("\n".join(files))
-        self.append_log(f"→ Seleccionados {len(files)} CSV(s)")
+        self.append_log(f"→ Seleccionados {len(files)} fichero(s) baseline")
 
     def load_history(self) -> None:
         with SessionLocal() as session:
@@ -165,14 +165,14 @@ class ImportView(QWidget):
             return
 
         if not self.selected_files:
-            self.append_log("✗ No has seleccionado ningún CSV")
+            self.append_log("✗ No has seleccionado ningún fichero baseline")
             return
 
         self.select_button.setEnabled(False)
         self.import_button.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-        self.progress_label.setText("Iniciando importación CSV...")
-        self.append_log("→ Iniciando importación CSV")
+        self.progress_label.setText("Iniciando importación baseline...")
+        self.append_log("→ Iniciando importación baseline")
 
         self.worker = CsvImportWorker(
             file_paths=self.selected_files,
@@ -199,11 +199,11 @@ class ImportView(QWidget):
         self.import_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)
-        self.progress_label.setText("Importación CSV completada")
+        self.progress_label.setText("Importación baseline completada")
 
         summary = result["summary"]
 
-        self.append_log("✓ Importación CSV completada")
+        self.append_log("✓ Importación baseline completada")
         self.append_log(
             f"   Ficheros OK: {summary['files_success']} | "
             f"Duplicados: {summary['files_skipped_duplicate']} | "
@@ -235,7 +235,7 @@ class ImportView(QWidget):
         self.import_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Error en importación CSV")
+        self.progress_label.setText("Error en importación baseline")
 
         self.append_log(f"✗ Error: {error_text}")
         self.load_history()

@@ -7,6 +7,7 @@ from core.identity.asset_matcher import find_existing_asset
 from core.identity.listing_resolver import extract_external_id, find_existing_listing
 from core.normalization.addresses import normalize_address_key, normalize_address_raw
 from core.normalization.phones import normalize_phone
+from core.normalization.portals import canonicalize_portal_label
 from core.normalization.property_types import normalize_property_type
 from core.normalization.text import normalize_text_key
 from core.normalization.urls import normalize_url
@@ -153,7 +154,7 @@ def get_or_create_listing(
 ) -> tuple[Listing, bool]:
     listing_url = normalize_url(_safe_str(row.get("Página del anuncio")))
     property_url = normalize_url(_safe_str(row.get("Página de la propiedad")))
-    source_portal = _safe_str(row.get("Fuente"))
+    source_portal = canonicalize_portal_label(_safe_str(row.get("Fuente")))
     status = _safe_str(row.get("Estado del anuncio"))
 
     price_eur = parse_price_eur(_safe_str(row.get("Precio")))
