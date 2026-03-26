@@ -310,6 +310,7 @@ def get_microzone_intelligence(
             enriched["microzone_confidence_score"],
         )
         enriched["executive_summary"] = _summary_text(enriched)
+        enriched["radar_explanation"] = enriched["executive_summary"]
         result.append(enriched)
 
     result.sort(

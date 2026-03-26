@@ -144,12 +144,32 @@ def test_opportunity_queue_filters_groups_and_breakdown(monkeypatch) -> None:
                 },
             },
         )
+        monkeypatch.setattr(
+            opportunity_queue_service_v2,
+            "_microzone_map",
+            lambda session, window_days=14: {
+                "Sol / MZ mx-my": {
+                    "microzone_label": "Sol / MZ mx-my",
+                    "microzone_capture_score": 72.0,
+                    "microzone_concentration_score": 68.0,
+                    "microzone_confidence_score": 61.0,
+                    "recommended_action": "Ir al punto caliente",
+                }
+            },
+        )
+        monkeypatch.setattr(
+            opportunity_queue_service_v2,
+            "infer_microzone_for_asset",
+            lambda asset: "Sol / MZ mx-my" if asset and asset.neighborhood == "Sol" else None,
+        )
 
         rows = get_opportunity_queue_v2(session, window_days=14, limit=20)
 
         assert len(rows) == 3
         assert rows[0]["priority_label"] in {"alta", "media", "seguimiento"}
         assert "evento" in rows[0]["score_breakdown"]
+        assert rows[0]["microzone_label"] == "Sol / MZ mx-my"
+        assert rows[0]["score_microzone_signal"] > 0
 
         filtered = filter_opportunity_rows(
             rows,
@@ -203,11 +223,30 @@ def test_opportunity_detail_includes_comparables(monkeypatch) -> None:
                 },
             },
         )
+        monkeypatch.setattr(
+            opportunity_queue_service_v2,
+            "_microzone_map",
+            lambda session, window_days=14: {
+                "Sol / MZ mx-my": {
+                    "microzone_label": "Sol / MZ mx-my",
+                    "microzone_capture_score": 72.0,
+                    "microzone_concentration_score": 68.0,
+                    "microzone_confidence_score": 61.0,
+                    "recommended_action": "Ir al punto caliente",
+                }
+            },
+        )
+        monkeypatch.setattr(
+            opportunity_queue_service_v2,
+            "infer_microzone_for_asset",
+            lambda asset: "Sol / MZ mx-my" if asset and asset.neighborhood == "Sol" else None,
+        )
 
         detail = get_opportunity_detail_v2(session, seeded["event_1"].id, window_days=14)
 
         assert detail["found"] is True
         assert detail["queue_row"]["event_id"] == seeded["event_1"].id
+        assert detail["queue_row"]["microzone_label"] == "Sol / MZ mx-my"
         assert detail["comparables"]["summary"]["comparables_count"] >= 1
     finally:
         session.close()

@@ -106,6 +106,32 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
                 },
             ],
         )
+        monkeypatch.setattr(
+            radar_service_v2,
+            "get_microzone_intelligence",
+            lambda session, window_days=14, limit=16: [
+                {
+                    "zone_label": "Zona A / MZ p1-p2",
+                    "microzone_label": "Zona A / MZ p1-p2",
+                    "microzone_capture_score": 74.0,
+                    "microzone_concentration_score": 71.0,
+                    "microzone_confidence_score": 66.0,
+                    "recommended_action": "Ir al punto caliente",
+                    "executive_summary": "Hotspot micro.",
+                    "events_14d": 4,
+                },
+                {
+                    "zone_label": "Zona B / MZ p1-p3",
+                    "microzone_label": "Zona B / MZ p1-p3",
+                    "microzone_capture_score": 58.0,
+                    "microzone_concentration_score": 49.0,
+                    "microzone_confidence_score": 52.0,
+                    "recommended_action": "Seguir de cerca",
+                    "executive_summary": "Seguimiento micro.",
+                    "events_14d": 2,
+                },
+            ],
+        )
 
         payload = radar_service_v2.get_radar_payload_v2(session, window_days=30)
 
@@ -115,7 +141,10 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
         assert payload["summary"]["low_confidence_zones"] == 2
         assert payload["summary"]["capture_ready_zones"] == 3
         assert payload["summary"]["hot_zones"] == 3
+        assert payload["summary"]["microzones_total"] == 2
+        assert payload["summary"]["microzone_hotspots"] == 1
         assert payload["top_capture"][0]["radar_explanation"]
+        assert payload["top_microzones"][0]["microzone_capture_score"] == 74.0
         assert payload["low_confidence"][0]["zone_confidence_score"] <= payload["low_confidence"][1]["zone_confidence_score"]
     finally:
         session.close()

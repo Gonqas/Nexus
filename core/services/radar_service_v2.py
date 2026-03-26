@@ -78,7 +78,7 @@ def _summary(rows: list[dict], window_days: int) -> dict[str, Any]:
 def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, Any]:
     rows = get_zone_intelligence_v2(session, window_days=window_days)
     rows = _enrich_rows(rows)
-    microzones = get_microzone_intelligence(session, window_days=window_days, limit=16)
+    microzones = get_microzone_intelligence(session, window_days=window_days)
 
     top_capture = sorted(
         rows,
