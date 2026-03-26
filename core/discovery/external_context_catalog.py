@@ -341,7 +341,7 @@ def normalize_ckan_package(portal: dict[str, Any], package: dict[str, Any]) -> d
         theme_scores["demography"] += 2
 
     if any(token in title_notes for token in ("poblacion", "padron", "habitantes", "demografia")):
-        theme_scores["demography"] += 2
+        theme_scores["demography"] += 4
     if any(token in title_notes for token in ("vivienda", "licencia", "urbanismo", "catastro")):
         theme_scores["housing_urbanism"] += 2
 
@@ -353,6 +353,16 @@ def normalize_ckan_package(portal: dict[str, Any], package: dict[str, Any]) -> d
         theme_scores["housing_urbanism"] += 1
 
     primary_theme = max(theme_scores, key=lambda key: theme_scores[key])
+    if (
+        any(token in title_notes for token in ("poblacion", "padron", "habitantes", "demografia"))
+        and theme_scores["demography"] >= theme_scores[primary_theme]
+    ):
+        primary_theme = "demography"
+    if (
+        any(token in title_notes for token in ("vivienda", "licencia", "urbanismo", "catastro"))
+        and theme_scores["housing_urbanism"] >= theme_scores[primary_theme]
+    ):
+        primary_theme = "housing_urbanism"
     focus_score = int(theme_scores[primary_theme])
 
     special_focus = any(

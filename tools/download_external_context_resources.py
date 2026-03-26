@@ -58,11 +58,17 @@ def _extension(resource: dict) -> str:
 
 
 def _download(url: str, destination: Path) -> int:
-    request = Request(url, headers=REQUEST_HEADERS)
-    with urlopen(request, timeout=120) as response:
-        payload = response.read()
-    destination.write_bytes(payload)
-    return len(payload)
+    last_error = None
+    for attempt in range(3):
+        try:
+            request = Request(url, headers=REQUEST_HEADERS)
+            with urlopen(request, timeout=180) as response:
+                payload = response.read()
+            destination.write_bytes(payload)
+            return len(payload)
+        except Exception as exc:
+            last_error = exc
+    raise last_error or RuntimeError(f"Download failed: {url}")
 
 
 def main() -> None:
@@ -85,6 +91,10 @@ def main() -> None:
 
     manifest = {
         "generated_at": None,
+        "theme": args.theme,
+        "portal_id": args.portal_id,
+        "limit": args.limit,
+        "max_size_mb": args.max_size_mb,
         "downloads": [],
         "skipped": [],
     }
@@ -112,7 +122,20 @@ def main() -> None:
         extension = _extension(resource)
         filename = f"{safe_slug(item['slug'])}.{extension}"
         destination = folder / filename
-        bytes_written = _download(url, destination)
+        try:
+            bytes_written = _download(url, destination)
+        except Exception as exc:
+            if destination.exists():
+                destination.unlink(missing_ok=True)
+            manifest["skipped"].append(
+                {
+                    "reason": "download_error",
+                    "dataset_title": item["dataset_title"],
+                    "url": url,
+                    "error": str(exc),
+                }
+            )
+            continue
 
         manifest["downloads"].append(
             {
@@ -127,9 +150,13 @@ def main() -> None:
             }
         )
 
-    manifest["generated_at"] = datetime.now(UTC).isoformat()
-    manifest_path = RAW_DOWNLOAD_DIR / "download_manifest.json"
-    manifest_path.write_bytes(orjson.dumps(manifest, option=orjson.OPT_INDENT_2))
+    generated_at = datetime.now(UTC)
+    manifest["generated_at"] = generated_at.isoformat()
+    manifest_path = RAW_DOWNLOAD_DIR / f"download_manifest_{generated_at.strftime('%Y%m%dT%H%M%SZ')}.json"
+    latest_manifest_path = RAW_DOWNLOAD_DIR / "download_manifest_latest.json"
+    payload = orjson.dumps(manifest, option=orjson.OPT_INDENT_2)
+    manifest_path.write_bytes(payload)
+    latest_manifest_path.write_bytes(payload)
 
     print(f"downloads={len(manifest['downloads'])}")
     print(f"skipped={len(manifest['skipped'])}")
