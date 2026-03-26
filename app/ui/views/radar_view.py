@@ -1,7 +1,9 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QTableWidget,
@@ -20,18 +22,37 @@ def safe_text(value) -> str:
     return str(value)
 
 
+class StatCard(QGroupBox):
+    def __init__(self, title: str, value: str, detail: str = "") -> None:
+        super().__init__(title)
+        layout = QVBoxLayout(self)
+
+        self.value_label = QLabel(value)
+        self.value_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        layout.addWidget(self.value_label)
+
+        self.detail_label = QLabel(detail)
+        self.detail_label.setStyleSheet("color: #666;")
+        self.detail_label.setWordWrap(True)
+        layout.addWidget(self.detail_label)
+
+    def set_value(self, value: str) -> None:
+        self.value_label.setText(value)
+
+    def set_detail(self, detail: str) -> None:
+        self.detail_label.setText(detail)
+
+
 class RadarTable(QGroupBox):
     def __init__(self, title: str, metric_label: str) -> None:
         super().__init__(title)
 
-        self.metric_label = metric_label
-
         layout = QVBoxLayout(self)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(
-            ["Zona", metric_label, "Confianza", "Acción"]
+            ["Zona", metric_label, "Confianza", "Acción", "Explicación"]
         )
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
@@ -46,6 +67,7 @@ class RadarTable(QGroupBox):
                 safe_text(row[metric_key]),
                 safe_text(row["zone_confidence_score"]),
                 safe_text(row["recommended_action"]),
+                safe_text(row.get("radar_explanation")),
             ]
 
             for col_idx, value in enumerate(values):
@@ -63,21 +85,56 @@ class RadarView(QWidget):
 
         layout = QVBoxLayout(self)
 
-        top_bar = QGridLayout()
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+
         self.title = QLabel("Radar")
         self.title.setStyleSheet("font-size: 22px; font-weight: bold;")
+        title_box.addWidget(self.title)
 
-        self.subtitle = QLabel("Rankings rápidos de captación, calor, presión, liquidez y confianza")
+        self.subtitle = QLabel(
+            "Lectura rápida de captación, calor, presión, liquidez y confianza con ventanas 7/14/30 y ranking más robusto."
+        )
         self.subtitle.setStyleSheet("color: #666;")
+        self.subtitle.setWordWrap(True)
+        title_box.addWidget(self.subtitle)
+
+        controls = QHBoxLayout()
+        self.window_combo = QComboBox()
+        self.window_combo.addItems(["7", "14", "30"])
+        self.window_combo.setCurrentText("14")
+        self.window_combo.currentTextChanged.connect(self.load_data)
 
         self.refresh_button = QPushButton("Refrescar")
         self.refresh_button.clicked.connect(self.load_data)
 
-        top_bar.addWidget(self.title, 0, 0)
-        top_bar.addWidget(self.refresh_button, 0, 1)
-        top_bar.addWidget(self.subtitle, 1, 0, 1, 2)
+        controls.addWidget(QLabel("Ventana:"))
+        controls.addWidget(self.window_combo)
+        controls.addWidget(self.refresh_button)
 
-        layout.addLayout(top_bar)
+        header.addLayout(title_box)
+        header.addStretch()
+        header.addLayout(controls)
+        layout.addLayout(header)
+
+        self.summary_label = QLabel("Sin datos")
+        self.summary_label.setStyleSheet("color: #666;")
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        summary_grid = QGridLayout()
+        self.zones_total_card = StatCard("Zonas", "0")
+        self.capture_ready_card = StatCard("Capture ready", "0")
+        self.high_conf_card = StatCard("Alta confianza", "0")
+        self.low_conf_card = StatCard("Baja confianza", "0")
+        self.hot_zones_card = StatCard("Zonas calientes", "0")
+
+        summary_grid.addWidget(self.zones_total_card, 0, 0)
+        summary_grid.addWidget(self.capture_ready_card, 0, 1)
+        summary_grid.addWidget(self.high_conf_card, 0, 2)
+        summary_grid.addWidget(self.low_conf_card, 1, 0)
+        summary_grid.addWidget(self.hot_zones_card, 1, 1)
+        layout.addLayout(summary_grid)
 
         grid = QGridLayout()
         self.capture_table = RadarTable("Top captación", "Capture")
@@ -96,8 +153,30 @@ class RadarView(QWidget):
         self.load_data()
 
     def load_data(self) -> None:
+        window_days = int(self.window_combo.currentText())
+
         with SessionLocal() as session:
-            payload = get_radar_payload_v2(session, window_days=14)
+            payload = get_radar_payload_v2(session, window_days=window_days)
+
+        summary = payload["summary"]
+        self.summary_label.setText(
+            f"Ventana={payload['window_days']}d | zonas={summary['zones_total']} | "
+            f"capture ready={summary['capture_ready_zones']} | "
+            f"alta confianza={summary['high_confidence_zones']} | "
+            f"baja confianza={summary['low_confidence_zones']} | "
+            f"zonas calientes={summary['hot_zones']}"
+        )
+
+        self.zones_total_card.set_value(str(summary["zones_total"]))
+        self.zones_total_card.set_detail(f"ventana {payload['window_days']}d")
+        self.capture_ready_card.set_value(str(summary["capture_ready_zones"]))
+        self.capture_ready_card.set_detail("capture>=60 y confidence>=50")
+        self.high_conf_card.set_value(str(summary["high_confidence_zones"]))
+        self.high_conf_card.set_detail("confidence>=60")
+        self.low_conf_card.set_value(str(summary["low_confidence_zones"]))
+        self.low_conf_card.set_detail("confidence<40")
+        self.hot_zones_card.set_value(str(summary["hot_zones"]))
+        self.hot_zones_card.set_detail("heat>=65")
 
         self.capture_table.load_rows(payload["top_capture"], "zone_capture_score")
         self.heat_table.load_rows(payload["top_heat"], "zone_heat_score")
