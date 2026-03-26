@@ -62,10 +62,14 @@ class RadarTable(QGroupBox):
         self.table.setRowCount(len(rows))
 
         for row_idx, row in enumerate(rows):
+            confidence_value = row.get("zone_confidence_score")
+            if confidence_value is None:
+                confidence_value = row.get("microzone_confidence_score")
+
             values = [
                 safe_text(row["zone_label"]),
                 safe_text(row[metric_key]),
-                safe_text(row["zone_confidence_score"]),
+                safe_text(confidence_value),
                 safe_text(row["recommended_action"]),
                 safe_text(row.get("radar_explanation")),
             ]

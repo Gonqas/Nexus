@@ -185,6 +185,28 @@ def get_dashboard_stats(session: Session) -> dict[str, int | float | str | list[
         for row in transformation_zones[:8]
     ]
 
+    predictive_zones = sorted(
+        [row for row in zone_rows if (row.get("predicted_absorption_30d_score") or 0) > 0],
+        key=lambda row: (
+            row.get("predicted_absorption_30d_score", 0),
+            row.get("zone_liquidity_score", 0),
+            row.get("zone_relative_heat_score", 0),
+        ),
+        reverse=True,
+    )
+
+    top_predictive_zone_rows = [
+        {
+            "zone_label": row.get("zone_label"),
+            "predicted_absorption_30d_score": row.get("predicted_absorption_30d_score"),
+            "predicted_absorption_30d_band": row.get("predicted_absorption_30d_band"),
+            "zone_liquidity_score": row.get("zone_liquidity_score"),
+            "zone_relative_heat_score": row.get("zone_relative_heat_score"),
+            "recommended_action": row.get("recommended_action"),
+        }
+        for row in predictive_zones[:8]
+    ]
+
     neighborhood_rows = [
         row
         for row in zone_rows
@@ -208,6 +230,9 @@ def get_dashboard_stats(session: Session) -> dict[str, int | float | str | list[
     )
     transform_zones_count = sum(
         1 for row in zone_rows if (row.get("zone_transformation_signal_score") or 0) >= 65
+    )
+    predictive_zones_count = sum(
+        1 for row in zone_rows if (row.get("predicted_absorption_30d_score") or 0) >= 65
     )
     neighborhoods_with_change_of_use = sum(
         1 for row in neighborhood_rows if int(row.get("official_change_of_use_24m") or 0) > 0
@@ -255,11 +280,13 @@ def get_dashboard_stats(session: Session) -> dict[str, int | float | str | list[
         "low_confidence_zones_count": len(low_confidence_zones),
         "low_confidence_zones": low_confidence_zone_rows,
         "transform_zones_count": transform_zones_count,
+        "predictive_zones_count": predictive_zones_count,
         "neighborhoods_with_change_of_use": neighborhoods_with_change_of_use,
         "total_change_of_use_24m": total_change_of_use_24m,
         "total_closed_locales": total_closed_locales,
         "total_vut_units": total_vut_units,
         "top_transformation_zones": top_transformation_zone_rows,
+        "top_predictive_zones": top_predictive_zone_rows,
         "last_sync_status": sync_state.last_status if sync_state else None,
         "last_sync_started_at": sync_state.last_started_at if sync_state else None,
         "last_sync_finished_at": sync_state.last_finished_at if sync_state else None,
