@@ -125,11 +125,15 @@ def _zone_signal_score(zone_row: dict | None) -> float:
     capture = float(zone_row.get("zone_capture_score", 0.0))
     pressure = float(zone_row.get("zone_pressure_score", 0.0))
     confidence = float(zone_row.get("zone_confidence_score", 0.0))
+    relative_heat = float(zone_row.get("zone_relative_heat_score", 0.0))
+    transformation = float(zone_row.get("zone_transformation_signal_score", 0.0))
 
     return (
-        0.45 * (capture / 100.0) * 20.0
-        + 0.35 * (pressure / 100.0) * 15.0
-        + 0.20 * (confidence / 100.0) * 10.0
+        0.34 * (capture / 100.0) * 20.0
+        + 0.24 * (pressure / 100.0) * 15.0
+        + 0.14 * (confidence / 100.0) * 10.0
+        + 0.16 * (relative_heat / 100.0) * 14.0
+        + 0.12 * (transformation / 100.0) * 14.0
     )
 
 
@@ -203,6 +207,10 @@ def _build_reason(
             bits.append("zona fuerte para captación")
         elif zone_row.get("zone_pressure_score", 0) >= 65:
             bits.append("zona con presión alta")
+        if zone_row.get("zone_relative_heat_score", 0) >= 65:
+            bits.append("actividad relativa alta")
+        if zone_row.get("zone_transformation_signal_score", 0) >= 65:
+            bits.append("señal transformadora alta")
 
     if phone_profile == "owner_like":
         bits.append("teléfono owner_like")
@@ -307,9 +315,14 @@ def get_opportunity_queue_v2(
             ),
             "zone_label": zone_label,
             "zone_capture_score": zone_row.get("zone_capture_score") if zone_row else None,
+            "zone_relative_heat_score": zone_row.get("zone_relative_heat_score") if zone_row else None,
+            "zone_transformation_signal_score": zone_row.get("zone_transformation_signal_score") if zone_row else None,
             "zone_pressure_score": zone_row.get("zone_pressure_score") if zone_row else None,
             "zone_confidence_score": zone_row.get("zone_confidence_score") if zone_row else None,
             "zone_recommended_action": zone_row.get("recommended_action") if zone_row else None,
+            "zone_population": zone_row.get("official_population") if zone_row else None,
+            "zone_events_14d_per_10k_population": zone_row.get("events_14d_per_10k_population") if zone_row else None,
+            "zone_vulnerability_index": zone_row.get("official_vulnerability_index") if zone_row else None,
             "asset_id": asset.id if asset else None,
             "asset_type": _asset_type(asset),
             "asset_address": asset.address_raw if asset else None,

@@ -52,7 +52,7 @@ class RadarTable(QGroupBox):
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(
-            ["Zona", metric_label, "Confianza", "Acción", "Explicación"]
+            ["Zona", metric_label, "Confianza", "Accion", "Explicacion"]
         )
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
@@ -93,7 +93,7 @@ class RadarView(QWidget):
         title_box.addWidget(self.title)
 
         self.subtitle = QLabel(
-            "Lectura rápida de captación, calor, presión, liquidez y confianza con ventanas 7/14/30 y ranking más robusto."
+            "Lectura rapida de captacion, calor, presion, liquidez y confianza con ventanas 7/14/30 y normalizacion por poblacion cuando hay contexto oficial."
         )
         self.subtitle.setStyleSheet("color: #666;")
         self.subtitle.setWordWrap(True)
@@ -128,18 +128,22 @@ class RadarView(QWidget):
         self.high_conf_card = StatCard("Alta confianza", "0")
         self.low_conf_card = StatCard("Baja confianza", "0")
         self.hot_zones_card = StatCard("Zonas calientes", "0")
+        self.relative_hot_card = StatCard("Hotspots relativos", "0")
+        self.transform_card = StatCard("Zonas transformacion", "0")
 
         summary_grid.addWidget(self.zones_total_card, 0, 0)
         summary_grid.addWidget(self.capture_ready_card, 0, 1)
         summary_grid.addWidget(self.high_conf_card, 0, 2)
         summary_grid.addWidget(self.low_conf_card, 1, 0)
         summary_grid.addWidget(self.hot_zones_card, 1, 1)
+        summary_grid.addWidget(self.relative_hot_card, 1, 2)
+        summary_grid.addWidget(self.transform_card, 2, 0)
         layout.addLayout(summary_grid)
 
         grid = QGridLayout()
-        self.capture_table = RadarTable("Top captación", "Capture")
+        self.capture_table = RadarTable("Top captacion", "Capture")
         self.heat_table = RadarTable("Top calor", "Heat")
-        self.pressure_table = RadarTable("Top presión", "Pressure")
+        self.pressure_table = RadarTable("Top presion", "Pressure")
         self.liquidity_table = RadarTable("Top liquidez", "Liquidity")
         self.low_conf_table = RadarTable("Baja confianza", "Confidence")
 
@@ -164,7 +168,9 @@ class RadarView(QWidget):
             f"capture ready={summary['capture_ready_zones']} | "
             f"alta confianza={summary['high_confidence_zones']} | "
             f"baja confianza={summary['low_confidence_zones']} | "
-            f"zonas calientes={summary['hot_zones']}"
+            f"zonas calientes={summary['hot_zones']} | "
+            f"hotspots relativos={summary.get('relative_hot_zones', 0)} | "
+            f"zonas transformacion={summary.get('transform_zones', 0)}"
         )
 
         self.zones_total_card.set_value(str(summary["zones_total"]))
@@ -177,6 +183,10 @@ class RadarView(QWidget):
         self.low_conf_card.set_detail("confidence<40")
         self.hot_zones_card.set_value(str(summary["hot_zones"]))
         self.hot_zones_card.set_detail("heat>=65")
+        self.relative_hot_card.set_value(str(summary.get("relative_hot_zones", 0)))
+        self.relative_hot_card.set_detail("relative_heat>=65")
+        self.transform_card.set_value(str(summary.get("transform_zones", 0)))
+        self.transform_card.set_detail("transformation>=65")
 
         self.capture_table.load_rows(payload["top_capture"], "zone_capture_score")
         self.heat_table.load_rows(payload["top_heat"], "zone_heat_score")

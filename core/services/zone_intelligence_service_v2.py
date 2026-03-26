@@ -14,6 +14,16 @@ def build_zone_executive_summary(row: dict) -> str:
     else:
         bits.append("actividad reciente baja")
 
+    if row.get("zone_relative_heat_score", 0) >= 65:
+        bits.append("actividad relativa alta para su tamano")
+    elif row.get("zone_relative_heat_score", 0) >= 45:
+        bits.append("actividad relativa media para su tamano")
+
+    if row.get("zone_transformation_signal_score", 0) >= 65:
+        bits.append("senal transformadora alta")
+    elif row.get("zone_transformation_signal_score", 0) >= 45:
+        bits.append("senal transformadora media")
+
     if row["zone_pressure_score"] >= 65:
         bits.append("presión comercial relevante")
     elif row["zone_pressure_score"] >= 45:
@@ -35,6 +45,16 @@ def build_zone_executive_summary(row: dict) -> str:
         bits.append("confianza baja")
     elif row["zone_confidence_score"] >= 60:
         bits.append("lectura con confianza razonable")
+
+    population = row.get("official_population")
+    if population:
+        bits.append(f"{float(row.get('events_14d_per_10k_population') or 0.0):.1f} eventos por 10k hab")
+
+    vulnerability = row.get("official_vulnerability_index")
+    if vulnerability is not None:
+        bits.append(f"IVT {float(vulnerability):.1f}")
+    if row.get("official_change_of_use_24m"):
+        bits.append(f"{int(row.get('official_change_of_use_24m') or 0)} cambios de uso recientes")
 
     return ". ".join(bits).capitalize() + "." if bits else "Sin lectura ejecutiva suficiente."
 

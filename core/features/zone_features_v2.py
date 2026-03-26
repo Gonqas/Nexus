@@ -357,6 +357,19 @@ def build_zone_feature_rows_v2(session: Session, window_days: int = 14) -> list[
         enriched["official_foreign_population_rate"] = context.get("foreign_population_rate")
         enriched["official_abstention_rate"] = context.get("abstention_rate")
         enriched["official_age_dependency_share"] = context.get("age_dependency_share")
+        enriched["official_change_of_use_24m"] = context.get("change_of_use_24m")
+        enriched["official_new_dwelling_24m"] = context.get("new_dwelling_24m")
+        enriched["official_urban_licenses_24m"] = context.get("urban_licenses_24m")
+        enriched["official_urban_inspections_24m"] = (
+            context.get("urban_inspections_24m") or context.get("district_urban_inspections_24m")
+        )
+        enriched["official_discipline_inspections_24m"] = (
+            context.get("discipline_inspections_24m") or context.get("district_discipline_inspections_24m")
+        )
+        enriched["official_locales_total"] = context.get("locales_total")
+        enriched["official_locales_open"] = context.get("locales_open")
+        enriched["official_locales_closed"] = context.get("locales_closed")
+        enriched["official_vut_units"] = context.get("vut_units") or context.get("district_vut_units")
         enriched["assets_per_1k_population"] = safe_rate(assets_count, population, 1000.0)
         enriched["active_listings_per_1k_population"] = safe_rate(
             row["active_listings_count"], population, 1000.0
@@ -376,6 +389,10 @@ def build_zone_feature_rows_v2(session: Session, window_days: int = 14) -> list[
         enriched["casafari_raw_per_10k_population"] = safe_rate(
             row["casafari_raw_in_zone"], population, 10000.0
         )
+        enriched["change_of_use_per_10k_population"] = context.get("change_of_use_per_10k_population")
+        enriched["urban_inspections_per_10k_population"] = context.get("urban_inspections_per_10k_population")
+        enriched["closed_locales_per_1k_population"] = context.get("closed_locales_per_1k_population")
+        enriched["vut_units_per_1k_population"] = context.get("vut_units_per_1k_population")
         enriched_rows.append(enriched)
 
     return enriched_rows

@@ -33,13 +33,13 @@ def _freshness_score(days_old: int | None) -> float:
 
 def recommend_action_v2(capture: float, pressure: float, liquidity: float, confidence: float) -> str:
     if confidence < 40:
-        return "Poca señal / baja confianza"
+        return "Poca senal / baja confianza"
     if capture >= 75 and pressure >= 55:
-        return "Captación agresiva"
+        return "Captacion agresiva"
     if capture >= 60:
-        return "Captación selectiva"
+        return "Captacion selectiva"
     if pressure >= 70 and liquidity >= 50:
-        return "Negociación más que captación"
+        return "Negociacion mas que captacion"
     if pressure >= 75 and liquidity < 40:
         return "Zona saturada"
     if capture >= 45 or liquidity >= 50:
@@ -55,15 +55,25 @@ def build_score_explanation_v2(row: dict) -> str:
     elif row["zone_heat_score"] >= 45:
         bits.append("actividad media")
 
+    if row.get("zone_relative_heat_score", 0) >= 65:
+        bits.append("actividad relativa alta")
+    elif row.get("zone_relative_heat_score", 0) >= 45:
+        bits.append("actividad relativa media")
+
+    if row.get("zone_transformation_signal_score", 0) >= 65:
+        bits.append("senal de transformacion alta")
+    elif row.get("zone_transformation_signal_score", 0) >= 45:
+        bits.append("senal de transformacion media")
+
     if row["zone_pressure_score"] >= 65:
-        bits.append("presión alta")
+        bits.append("presion alta")
     elif row["zone_pressure_score"] >= 45:
-        bits.append("presión moderada")
+        bits.append("presion moderada")
 
     if row["zone_liquidity_score"] >= 60:
         bits.append("liquidez fuerte")
     elif row["zone_liquidity_score"] < 35:
-        bits.append("liquidez débil")
+        bits.append("liquidez debil")
 
     if row.get("geo_point_ratio", 0) >= 0.75:
         bits.append("geo precisa")
@@ -77,7 +87,12 @@ def build_score_explanation_v2(row: dict) -> str:
     elif row["zone_confidence_score"] >= 60:
         bits.append("confianza razonable")
 
-    return " · ".join(bits) if bits else "Sin explicación suficiente"
+    if row.get("official_population"):
+        bits.append(f"{float(row.get('events_14d_per_10k_population') or 0.0):.1f} evt/10k hab")
+    if row.get("official_change_of_use_24m"):
+        bits.append(f"{int(row.get('official_change_of_use_24m') or 0)} cambios de uso/24m")
+
+    return " | ".join(bits) if bits else "Sin explicacion suficiente"
 
 
 def score_zone_rows_v2(rows: list[dict]) -> list[dict]:
@@ -94,6 +109,15 @@ def score_zone_rows_v2(rows: list[dict]) -> list[dict]:
     resolved_ratio = [float(r["resolved_ratio"]) for r in rows]
     asset_diversity = [float(r["asset_type_diversity"]) for r in rows]
     portal_diversity = [float(r["portal_diversity"]) for r in rows]
+    events_per_10k_population = [float(r.get("events_14d_per_10k_population") or 0.0) for r in rows]
+    listings_per_1k_population = [float(r.get("active_listings_per_1k_population") or 0.0) for r in rows]
+    drops_per_10k_population = [float(r.get("price_drop_per_10k_population") or 0.0) for r in rows]
+    absorption_per_10k_population = [float(r.get("absorption_per_10k_population") or 0.0) for r in rows]
+    change_of_use_per_10k_population = [float(r.get("change_of_use_per_10k_population") or 0.0) for r in rows]
+    inspections_per_10k_population = [float(r.get("urban_inspections_per_10k_population") or 0.0) for r in rows]
+    closed_locales_per_1k_population = [float(r.get("closed_locales_per_1k_population") or 0.0) for r in rows]
+    vut_units_per_1k_population = [float(r.get("vut_units_per_1k_population") or 0.0) for r in rows]
+    context_coverage = [1.0 if r.get("official_population") else 0.0 for r in rows]
     geo_point_ratio_raw = [
         _safe_ratio(float(r["geo_point_assets"]), float(r["assets_count"]))
         for r in rows
@@ -113,6 +137,15 @@ def score_zone_rows_v2(rows: list[dict]) -> list[dict]:
     norm_resolved = _normalize(resolved_ratio)
     norm_asset_div = _normalize(asset_diversity)
     norm_portal_div = _normalize(portal_diversity)
+    norm_events_per_pop = _normalize(events_per_10k_population)
+    norm_listings_per_pop = _normalize(listings_per_1k_population)
+    norm_drops_per_pop = _normalize(drops_per_10k_population)
+    norm_absorption_per_pop = _normalize(absorption_per_10k_population)
+    norm_change_of_use = _normalize(change_of_use_per_10k_population)
+    norm_inspections = _normalize(inspections_per_10k_population)
+    norm_closed_locales = _normalize(closed_locales_per_1k_population)
+    norm_vut = _normalize(vut_units_per_1k_population)
+    norm_context = _normalize(context_coverage)
     norm_geo_point = _normalize(geo_point_ratio_raw)
     norm_geo_neighborhood = _normalize(geo_neighborhood_ratio_raw)
 
@@ -128,16 +161,33 @@ def score_zone_rows_v2(rows: list[dict]) -> list[dict]:
         )
 
         heat = (
-            0.40 * norm_events[idx]
-            + 0.35 * norm_new_supply[idx]
-            + 0.25 * norm_absorption[idx]
+            0.28 * norm_events[idx]
+            + 0.22 * norm_new_supply[idx]
+            + 0.18 * norm_absorption[idx]
+            + 0.20 * norm_events_per_pop[idx]
+            + 0.12 * norm_absorption_per_pop[idx]
+        )
+
+        relative_heat = (
+            0.40 * norm_events_per_pop[idx]
+            + 0.30 * norm_absorption_per_pop[idx]
+            + 0.30 * norm_listings_per_pop[idx]
+        )
+
+        transformation = (
+            0.38 * norm_change_of_use[idx]
+            + 0.26 * norm_inspections[idx]
+            + 0.24 * norm_closed_locales[idx]
+            + 0.12 * norm_vut[idx]
         )
 
         pressure = (
-            0.35 * norm_drops[idx]
-            + 0.30 * saturation
-            + 0.20 * norm_broker[idx]
-            + 0.15 * max(norm_new_supply[idx] - norm_absorption[idx], 0.0)
+            0.25 * norm_drops[idx]
+            + 0.20 * norm_drops_per_pop[idx]
+            + 0.20 * saturation
+            + 0.15 * norm_broker[idx]
+            + 0.10 * max(norm_new_supply[idx] - norm_absorption[idx], 0.0)
+            + 0.10 * transformation
         )
 
         liquidity_raw = (
@@ -153,18 +203,21 @@ def score_zone_rows_v2(rows: list[dict]) -> list[dict]:
         )
 
         confidence = (
-            0.35 * norm_resolved[idx]
-            + 0.20 * freshness
+            0.32 * norm_resolved[idx]
+            + 0.18 * freshness
             + 0.15 * norm_asset_div[idx]
             + 0.10 * norm_portal_div[idx]
             + 0.20 * geo_quality
+            + 0.05 * norm_context[idx]
         )
 
         capture = (
-            0.33 * heat
-            + 0.27 * pressure
-            + 0.20 * liquidity
-            + 0.20 * confidence
+            0.24 * heat
+            + 0.18 * relative_heat
+            + 0.22 * pressure
+            + 0.12 * liquidity
+            + 0.14 * confidence
+            + 0.10 * transformation
         )
 
         row = dict(row)
@@ -172,6 +225,8 @@ def score_zone_rows_v2(rows: list[dict]) -> list[dict]:
         row["geo_neighborhood_ratio"] = round(geo_neighborhood_ratio_raw[idx], 4)
         row["zone_saturation_score"] = round(saturation * 100, 1)
         row["zone_heat_score"] = round(heat * 100, 1)
+        row["zone_relative_heat_score"] = round(relative_heat * 100, 1)
+        row["zone_transformation_signal_score"] = round(transformation * 100, 1)
         row["zone_pressure_score"] = round(pressure * 100, 1)
         row["zone_liquidity_score"] = round(liquidity * 100, 1)
         row["zone_capture_score"] = round(capture * 100, 1)
@@ -188,6 +243,7 @@ def score_zone_rows_v2(rows: list[dict]) -> list[dict]:
     result.sort(
         key=lambda r: (
             r["zone_capture_score"],
+            r["zone_relative_heat_score"],
             r["zone_confidence_score"],
             r["zone_heat_score"],
         ),

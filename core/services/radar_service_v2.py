@@ -69,6 +69,8 @@ def _summary(rows: list[dict], window_days: int) -> dict[str, Any]:
             if (row.get("zone_capture_score") or 0) >= 60 and (row.get("zone_confidence_score") or 0) >= 50
         ),
         "hot_zones": sum(1 for row in rows if (row.get("zone_heat_score") or 0) >= 65),
+        "relative_hot_zones": sum(1 for row in rows if (row.get("zone_relative_heat_score") or 0) >= 65),
+        "transform_zones": sum(1 for row in rows if (row.get("zone_transformation_signal_score") or 0) >= 65),
     }
 
 
@@ -84,7 +86,12 @@ def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, A
 
     top_heat = sorted(
         rows,
-        key=lambda r: (r["_heat_sort"], r["events_14d"], r["zone_confidence_score"]),
+        key=lambda r: (
+            r["_heat_sort"],
+            r.get("zone_relative_heat_score") or 0.0,
+            r.get("events_14d_per_10k_population") or 0.0,
+            r["zone_confidence_score"],
+        ),
         reverse=True,
     )[:12]
 
