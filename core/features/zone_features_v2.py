@@ -13,6 +13,7 @@ from core.features.zone_features import (
     infer_zone_label_for_listing,
 )
 from core.normalization.phones import normalize_phone
+from core.services.external_zone_context_service import get_zone_external_context
 from db.models.asset import Asset
 from db.models.ingestion_run import IngestionRun
 from db.models.listing import Listing
@@ -30,6 +31,12 @@ def ensure_utc_naive(dt):
 
 def utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def safe_rate(count: float, base: float, multiplier: float) -> float:
+    if not base:
+        return 0.0
+    return round((count / base) * multiplier, 4)
 
 
 def get_last_csv_success_dt(session: Session):
@@ -334,4 +341,41 @@ def build_zone_feature_rows_v2(session: Session, window_days: int = 14) -> list[
             }
         )
 
-    return rows
+    enriched_rows: list[dict] = []
+    for row in rows:
+        context = get_zone_external_context(row["zone_label"])
+        population = float(context.get("population") or 0.0)
+
+        enriched = dict(row)
+        enriched["context_zone_level"] = context.get("zone_level")
+        enriched["context_district_label"] = context.get("district_label")
+        enriched["official_population"] = context.get("population")
+        enriched["official_population_date"] = context.get("population_date")
+        enriched["official_household_income_eur"] = context.get("household_income_eur")
+        enriched["official_cadastral_value_mean"] = context.get("cadastral_value_mean")
+        enriched["official_vulnerability_index"] = context.get("vulnerability_index")
+        enriched["official_foreign_population_rate"] = context.get("foreign_population_rate")
+        enriched["official_abstention_rate"] = context.get("abstention_rate")
+        enriched["official_age_dependency_share"] = context.get("age_dependency_share")
+        enriched["assets_per_1k_population"] = safe_rate(assets_count, population, 1000.0)
+        enriched["active_listings_per_1k_population"] = safe_rate(
+            row["active_listings_count"], population, 1000.0
+        )
+        enriched["events_14d_per_10k_population"] = safe_rate(
+            row["events_14d"], population, 10000.0
+        )
+        enriched["listing_detected_per_10k_population"] = safe_rate(
+            row["listing_detected_count"], population, 10000.0
+        )
+        enriched["price_drop_per_10k_population"] = safe_rate(
+            row["price_drop_count"], population, 10000.0
+        )
+        enriched["absorption_per_10k_population"] = safe_rate(
+            row["absorption_count"], population, 10000.0
+        )
+        enriched["casafari_raw_per_10k_population"] = safe_rate(
+            row["casafari_raw_in_zone"], population, 10000.0
+        )
+        enriched_rows.append(enriched)
+
+    return enriched_rows
