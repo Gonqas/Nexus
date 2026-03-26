@@ -9,12 +9,17 @@ class CasafariSyncWorker(QThread):
     finished_ok = Signal(dict)
     failed = Signal(str)
 
+    def __init__(self, *, sync_mode: str = "balanced") -> None:
+        super().__init__()
+        self.sync_mode = sync_mode
+
     def run(self) -> None:
         try:
             with SessionLocal() as session:
                 result = sync_casafari_history(
                     session,
                     progress_callback=self._emit_progress,
+                    sync_mode=self.sync_mode,
                 )
             self.finished_ok.emit(result)
         except Exception as exc:

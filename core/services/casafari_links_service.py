@@ -9,6 +9,7 @@ from core.services.casafari_semantics_service import (
     classify_price_semantics,
     infer_match_reason_taxonomy,
 )
+from core.normalization.text import normalize_text_key
 from core.services.matching_metrics_service import (
     add_match_review,
     get_latest_match_review_map,
@@ -102,6 +103,8 @@ def get_casafari_link_stats(session: Session) -> dict[str, int]:
 def list_casafari_links(
     session: Session,
     status_filter: str = "all",
+    focus_filter: str = "all",
+    query_text: str | None = None,
     limit: int = 300,
 ) -> list[dict]:
     stmt = (
@@ -128,6 +131,8 @@ def list_casafari_links(
 
     phone_cache: dict[str, dict] = {}
     rows: list[dict] = []
+
+    query_key = normalize_text_key(query_text)
 
     for link in links:
         item = link.raw_history_item
@@ -159,42 +164,89 @@ def list_casafari_links(
         reason_taxonomy = infer_match_reason_taxonomy(session, item, link)
         latest_review = latest_review_map.get(item.id if item else None, {})
 
-        rows.append(
-            {
-                "raw_history_item_id": item.id if item else None,
-                "event_datetime": item.event_datetime if item else None,
-                "event_type_guess": item.event_type_guess if item else None,
-                "address_raw": item.address_raw if item else None,
-                "address_precision": address_meta["address_precision"],
-                "zone_like_label": address_meta["zone_like_label"],
-                "contact_phone": item.contact_phone if item else None,
-                "contact_name": item.contact_name if item else None,
-                "portal": item.portal if item else None,
-                "current_price_eur": item.current_price_eur if item else None,
-                "previous_price_eur": item.previous_price_eur if item else None,
-                "price_confidence": price_meta["price_confidence"],
-                "price_source": price_meta["price_source"],
-                "phone_profile": phone_cache[phone_key]["phone_profile"],
-                "phone_listing_count": phone_cache[phone_key]["phone_listing_count"],
-                "phone_asset_count": phone_cache[phone_key]["phone_asset_count"],
-                "phone_portal_count": phone_cache[phone_key]["phone_portal_count"],
-                "match_status": link.match_status,
-                "match_strategy": link.match_strategy,
-                "match_score": link.match_score,
-                "match_confidence_band": match_band,
-                "reason_taxonomy": reason_taxonomy,
-                "match_note": link.match_note,
-                "listing_id": link.listing_id,
-                "asset_id": link.asset_id,
-                "market_event_id": link.market_event_id,
-                "listing_label": listing_label,
-                "market_event_type": market_event.event_type if market_event else None,
-                "latest_review_label": latest_review.get("review_label"),
-                "latest_review_reason": latest_review.get("review_reason"),
-                "latest_review_reviewer": latest_review.get("reviewer"),
-                "latest_review_created_at": latest_review.get("created_at"),
-            }
-        )
+        row = {
+            "raw_history_item_id": item.id if item else None,
+            "event_datetime": item.event_datetime if item else None,
+            "event_type_guess": item.event_type_guess if item else None,
+            "address_raw": item.address_raw if item else None,
+            "address_precision": address_meta["address_precision"],
+            "zone_like_label": address_meta["zone_like_label"],
+            "contact_phone": item.contact_phone if item else None,
+            "contact_name": item.contact_name if item else None,
+            "portal": item.portal if item else None,
+            "current_price_eur": item.current_price_eur if item else None,
+            "previous_price_eur": item.previous_price_eur if item else None,
+            "price_confidence": price_meta["price_confidence"],
+            "price_source": price_meta["price_source"],
+            "phone_profile": phone_cache[phone_key]["phone_profile"],
+            "phone_listing_count": phone_cache[phone_key]["phone_listing_count"],
+            "phone_asset_count": phone_cache[phone_key]["phone_asset_count"],
+            "phone_portal_count": phone_cache[phone_key]["phone_portal_count"],
+            "match_status": link.match_status,
+            "match_strategy": link.match_strategy,
+            "match_score": link.match_score,
+            "match_confidence_band": match_band,
+            "reason_taxonomy": reason_taxonomy,
+            "match_note": link.match_note,
+            "listing_id": link.listing_id,
+            "asset_id": link.asset_id,
+            "market_event_id": link.market_event_id,
+            "listing_label": listing_label,
+            "market_event_type": market_event.event_type if market_event else None,
+            "latest_review_label": latest_review.get("review_label"),
+            "latest_review_reason": latest_review.get("review_reason"),
+            "latest_review_reviewer": latest_review.get("reviewer"),
+            "latest_review_created_at": latest_review.get("created_at"),
+        }
+
+        if focus_filter == "review_needed":
+            if row["match_status"] not in {"ambiguous", "unresolved", "pending"}:
+                continue
+            if row["latest_review_label"]:
+                continue
+        elif focus_filter == "poor_address":
+            if row["address_precision"] not in {"zone_like", "unknown"}:
+                continue
+        elif focus_filter == "repeated_phone":
+            if row["phone_profile"] != "broker_like":
+                continue
+        elif focus_filter == "weak_identity":
+            if row["reason_taxonomy"] not in {
+                "weak_identity",
+                "zone_only_address",
+                "repeated_phone_conflict",
+                "no_candidates",
+                "not_in_csv_yet",
+            }:
+                continue
+        elif focus_filter == "price_conflict":
+            if row["reason_taxonomy"] != "price_conflict":
+                continue
+
+        if query_key:
+            haystack = normalize_text_key(
+                " ".join(
+                    str(value)
+                    for value in (
+                        row["address_raw"],
+                        row["contact_name"],
+                        row["contact_phone"],
+                        row["portal"],
+                        row["match_status"],
+                        row["reason_taxonomy"],
+                        row["listing_label"],
+                        row["match_note"],
+                    )
+                    if value
+                )
+            )
+            if not haystack or query_key not in haystack:
+                continue
+
+        rows.append(row)
+
+        if len(rows) >= limit:
+            break
 
     return rows
 

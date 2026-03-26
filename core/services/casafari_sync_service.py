@@ -8,6 +8,7 @@ from core.connectors.casafari_history_connector import (
     CasafariHistoryConnector,
     derive_sync_range,
 )
+from core.services.casafari_debug_service import get_latest_casafari_debug_summary
 from core.services.casafari_reconciliation_service import reconcile_casafari_raw_items
 from db.models.raw_history_item import RawHistoryItem
 from db.repositories.sync_repo import get_or_create_sync_state
@@ -65,6 +66,7 @@ def upsert_raw_item(session: Session, data: dict) -> tuple[RawHistoryItem, bool]
 
 def get_sync_status(session: Session) -> dict:
     state = get_or_create_sync_state(session, CASAFARI_SOURCE_NAME)
+    debug_summary = get_latest_casafari_debug_summary()
 
     return {
         "source_name": state.source_name,
@@ -75,10 +77,27 @@ def get_sync_status(session: Session) -> dict:
         "last_status": state.last_status,
         "last_message": state.last_message,
         "last_item_count": state.last_item_count,
+        "last_debug_dir": debug_summary.get("debug_dir"),
+        "last_extractor_used": debug_summary.get("extractor_used"),
+        "last_pages_seen": debug_summary.get("pages_seen"),
+        "last_total_expected": debug_summary.get("total_expected"),
+        "last_coverage_gap": debug_summary.get("coverage_gap"),
+        "last_candidate_payload_count": debug_summary.get("candidate_payload_count"),
+        "last_captured_payload_count": debug_summary.get("captured_payload_count"),
+        "last_warning_count": debug_summary.get("warning_count"),
+        "last_warnings": debug_summary.get("warnings") or [],
+        "last_sync_mode": debug_summary.get("sync_mode"),
+        "last_final_url": debug_summary.get("final_url"),
+        "last_target_url": debug_summary.get("target_url"),
     }
 
 
-def sync_casafari_history(session: Session, progress_callback=None) -> dict:
+def sync_casafari_history(
+    session: Session,
+    progress_callback=None,
+    *,
+    sync_mode: str = "balanced",
+) -> dict:
     state = get_or_create_sync_state(session, CASAFARI_SOURCE_NAME)
 
     from_dt, to_dt = derive_sync_range(state.last_success_to)
@@ -94,7 +113,11 @@ def sync_casafari_history(session: Session, progress_callback=None) -> dict:
 
     try:
         connector = CasafariHistoryConnector(progress_callback=emit)
-        payload = connector.fetch_history(from_dt=from_dt, to_dt=to_dt)
+        payload = connector.fetch_history(
+            from_dt=from_dt,
+            to_dt=to_dt,
+            sync_mode=sync_mode,
+        )
 
         if not payload["items"]:
             raise RuntimeError(
@@ -134,6 +157,7 @@ def sync_casafari_history(session: Session, progress_callback=None) -> dict:
         state.last_status = "success"
         state.last_message = (
             f"Sync OK: {created} nuevos, {updated} actualizados, "
+            f"modo={payload.get('sync_mode', sync_mode)}, "
             f"extractor={payload['extractor_used']}, "
             f"resueltos={reconcile_stats['raw_items_resolved']}, "
             f"eventos={reconcile_stats['market_events_created']}"
@@ -146,6 +170,7 @@ def sync_casafari_history(session: Session, progress_callback=None) -> dict:
             "status": "success",
             "from_dt": from_dt,
             "to_dt": to_dt,
+            "sync_mode": payload.get("sync_mode", sync_mode),
             "raw_items_seen": len(payload["items"]),
             "raw_items_created": created,
             "raw_items_updated": updated,

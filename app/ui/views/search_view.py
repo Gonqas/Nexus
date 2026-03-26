@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,7 +26,7 @@ def safe_money(value: object | None) -> str:
     if value is None:
         return "-"
     try:
-        return f"{float(value):,.0f} €".replace(",", ".")
+        return f"{float(value):,.0f} EUR".replace(",", ".")
     except (TypeError, ValueError):
         return str(value)
 
@@ -35,13 +36,14 @@ class SearchView(QWidget):
         super().__init__()
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(14)
 
-        title = QLabel("Búsqueda avanzada")
+        title = QLabel("Busqueda avanzada")
         title.setStyleSheet("font-size: 22px; font-weight: bold;")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Búsqueda global con FTS5 sobre activos, listings, raws Casafari y eventos usando dirección, teléfono, contacto, portal o reason taxonomy."
+            "Busca globalmente y luego entra en la pestana que te interesa. Menos pantallas apiladas, mas foco."
         )
         subtitle.setStyleSheet("color: #666;")
         subtitle.setWordWrap(True)
@@ -57,6 +59,10 @@ class SearchView(QWidget):
         self.section_filter = QComboBox()
         self.section_filter.addItems(["all", "assets", "listings", "raws", "events"])
 
+        self.limit_combo = QComboBox()
+        self.limit_combo.addItems(["10", "25", "50"])
+        self.limit_combo.setCurrentText("25")
+
         self.search_button = QPushButton("Buscar")
         self.search_button.clicked.connect(self.run_search)
 
@@ -65,8 +71,10 @@ class SearchView(QWidget):
 
         controls.addWidget(QLabel("Query:"))
         controls.addWidget(self.query_input, 1)
-        controls.addWidget(QLabel("Ámbito:"))
+        controls.addWidget(QLabel("Ambito:"))
         controls.addWidget(self.section_filter)
+        controls.addWidget(QLabel("Limite:"))
+        controls.addWidget(self.limit_combo)
         controls.addWidget(self.search_button)
         controls.addWidget(self.reindex_button)
         layout.addLayout(controls)
@@ -76,48 +84,47 @@ class SearchView(QWidget):
         self.index_status_label.setWordWrap(True)
         layout.addWidget(self.index_status_label)
 
-        self.summary_label = QLabel("Sin búsqueda todavía")
+        self.summary_label = QLabel("Sin busqueda todavia")
         self.summary_label.setStyleSheet("color: #666;")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
 
-        self.assets_group = QGroupBox("Activos")
-        assets_layout = QVBoxLayout(self.assets_group)
-        self.assets_table = QTableWidget(0, 7)
-        self.assets_table.setHorizontalHeaderLabels(
-            ["Asset", "Tipo", "Dirección", "Barrio", "Distrito", "Listings", "Snippet"]
-        )
-        assets_layout.addWidget(self.assets_table)
-        layout.addWidget(self.assets_group)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs, 1)
 
-        self.listings_group = QGroupBox("Listings")
-        listings_layout = QVBoxLayout(self.listings_group)
-        self.listings_table = QTableWidget(0, 8)
-        self.listings_table.setHorizontalHeaderLabels(
-            ["Listing", "Asset", "Portal", "Dirección", "Contacto", "Teléfono", "Precio", "Snippet"]
+        self.assets_table = self._build_table_tab(
+            "Activos",
+            ["Asset", "Tipo", "Direccion", "Barrio", "Distrito", "Listings", "Snippet"],
         )
-        listings_layout.addWidget(self.listings_table)
-        layout.addWidget(self.listings_group)
-
-        self.raws_group = QGroupBox("Raw Casafari")
-        raws_layout = QVBoxLayout(self.raws_group)
-        self.raws_table = QTableWidget(0, 9)
-        self.raws_table.setHorizontalHeaderLabels(
-            ["Raw", "Fecha", "Estado", "Reason", "Dirección", "Contacto", "Teléfono", "Portal", "Snippet"]
+        self.listings_table = self._build_table_tab(
+            "Listings",
+            ["Listing", "Asset", "Portal", "Direccion", "Contacto", "Telefono", "Precio", "Snippet"],
         )
-        raws_layout.addWidget(self.raws_table)
-        layout.addWidget(self.raws_group)
-
-        self.events_group = QGroupBox("Eventos")
-        events_layout = QVBoxLayout(self.events_group)
-        self.events_table = QTableWidget(0, 7)
-        self.events_table.setHorizontalHeaderLabels(
-            ["Evento", "Fecha", "Tipo", "Canal", "Dirección", "Precio", "Snippet"]
+        self.raws_table = self._build_table_tab(
+            "Raw Casafari",
+            ["Raw", "Fecha", "Estado", "Reason", "Direccion", "Contacto", "Telefono", "Portal", "Snippet"],
         )
-        events_layout.addWidget(self.events_table)
-        layout.addWidget(self.events_group)
+        self.events_table = self._build_table_tab(
+            "Eventos",
+            ["Evento", "Fecha", "Tipo", "Canal", "Direccion", "Precio", "Snippet"],
+        )
 
         self.refresh_index_status()
+
+    def _build_table_tab(self, title: str, headers: list[str]) -> QTableWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        group = QGroupBox(title)
+        group_layout = QVBoxLayout(group)
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setCornerButtonEnabled(False)
+        group_layout.addWidget(table)
+        layout.addWidget(group)
+        self.tabs.addTab(page, title)
+        return table
 
     def refresh_index_status(self, *, force_rebuild: bool = False) -> None:
         with SessionLocal() as session:
@@ -134,13 +141,14 @@ class SearchView(QWidget):
     def run_search(self) -> None:
         query = self.query_input.text().strip()
         section_filter = self.section_filter.currentText()
+        limit = int(self.limit_combo.currentText())
 
         with SessionLocal() as session:
             payload = search_payload(
                 session,
                 query=query,
                 section_filter=section_filter,
-                limit_per_section=25,
+                limit_per_section=limit,
             )
             session.commit()
 
@@ -151,8 +159,7 @@ class SearchView(QWidget):
 
         summary = payload["summary"]
         self.summary_label.setText(
-            f"Resultados para '{payload['query']}': "
-            f"assets={summary['assets']} | listings={summary['listings']} | "
+            f"Resultados para '{payload['query']}': assets={summary['assets']} | listings={summary['listings']} | "
             f"raws={summary['raws']} | events={summary['events']} | total={summary['total']}"
         )
 

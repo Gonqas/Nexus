@@ -244,6 +244,32 @@ def build_app_stylesheet() -> str:
         background: transparent;
     }
 
+    QTabWidget::pane {
+        border: 1px solid #ddd4c7;
+        background: #ffffff;
+        border-radius: 14px;
+        top: -1px;
+    }
+
+    QTabBar::tab {
+        background: #efe7dc;
+        color: #6e5847;
+        padding: 8px 14px;
+        margin-right: 6px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        font-weight: 600;
+    }
+
+    QTabBar::tab:selected {
+        background: #ffffff;
+        color: #1f2933;
+    }
+
+    QTabBar::tab:hover:!selected {
+        background: #f5ede2;
+    }
+
     QSplitter::handle {
         background: transparent;
         width: 6px;

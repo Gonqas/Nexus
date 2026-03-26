@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -199,6 +200,61 @@ def derive_sync_range(last_success_to: datetime | None) -> tuple[datetime, datet
         return now_dt - timedelta(days=CASAFARI_BOOTSTRAP_DAYS), now_dt
 
     return last_success_to - timedelta(hours=CASAFARI_SYNC_OVERLAP_HOURS), now_dt
+
+
+@dataclass(frozen=True)
+class CasafariFetchOptions:
+    mode: str
+    headless: bool
+    max_pages: int
+    wait_after_goto_ms: int
+    wait_after_pagination_ms: int
+    wait_between_page_checks_ms: int
+    page_change_max_wait_ms: int
+    settle_wait_ms: int
+    scroll_wait_ms: int
+
+
+def resolve_fetch_options(sync_mode: str | None) -> CasafariFetchOptions:
+    mode = (sync_mode or "balanced").strip().lower()
+
+    if mode == "fast":
+        return CasafariFetchOptions(
+            mode="fast",
+            headless=True,
+            max_pages=min(CASAFARI_MAX_PAGES_PER_SYNC, 20),
+            wait_after_goto_ms=max(1200, CASAFARI_WAIT_AFTER_GOTO_MS // 2),
+            wait_after_pagination_ms=max(900, CASAFARI_WAIT_AFTER_PAGINATION_MS // 2),
+            wait_between_page_checks_ms=max(250, CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS // 2),
+            page_change_max_wait_ms=max(4500, CASAFARI_PAGE_CHANGE_MAX_WAIT_MS // 2),
+            settle_wait_ms=900,
+            scroll_wait_ms=300,
+        )
+
+    if mode == "diagnostic":
+        return CasafariFetchOptions(
+            mode="diagnostic",
+            headless=False,
+            max_pages=CASAFARI_MAX_PAGES_PER_SYNC,
+            wait_after_goto_ms=max(5000, CASAFARI_WAIT_AFTER_GOTO_MS),
+            wait_after_pagination_ms=max(2800, CASAFARI_WAIT_AFTER_PAGINATION_MS),
+            wait_between_page_checks_ms=max(700, CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS),
+            page_change_max_wait_ms=max(12000, CASAFARI_PAGE_CHANGE_MAX_WAIT_MS),
+            settle_wait_ms=1800,
+            scroll_wait_ms=650,
+        )
+
+    return CasafariFetchOptions(
+        mode="balanced",
+        headless=CASAFARI_HEADLESS,
+        max_pages=CASAFARI_MAX_PAGES_PER_SYNC,
+        wait_after_goto_ms=CASAFARI_WAIT_AFTER_GOTO_MS,
+        wait_after_pagination_ms=CASAFARI_WAIT_AFTER_PAGINATION_MS,
+        wait_between_page_checks_ms=CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS,
+        page_change_max_wait_ms=CASAFARI_PAGE_CHANGE_MAX_WAIT_MS,
+        settle_wait_ms=1500,
+        scroll_wait_ms=600,
+    )
 
 
 def parse_price_value(value: Any) -> float | None:
@@ -1061,12 +1117,19 @@ def get_page_signature(page) -> str:
     return hashlib.sha1(normalized.encode("utf-8", errors="ignore")).hexdigest()
 
 
-def wait_for_page_change(page, previous_url: str, previous_signature: str) -> bool:
+def wait_for_page_change(
+    page,
+    previous_url: str,
+    previous_signature: str,
+    *,
+    wait_between_page_checks_ms: int = CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS,
+    page_change_max_wait_ms: int = CASAFARI_PAGE_CHANGE_MAX_WAIT_MS,
+) -> bool:
     elapsed = 0
 
-    while elapsed < CASAFARI_PAGE_CHANGE_MAX_WAIT_MS:
-        page.wait_for_timeout(CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS)
-        elapsed += CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS
+    while elapsed < page_change_max_wait_ms:
+        page.wait_for_timeout(wait_between_page_checks_ms)
+        elapsed += wait_between_page_checks_ms
 
         current_url = page.url
         current_signature = get_page_signature(page)
@@ -1077,13 +1140,21 @@ def wait_for_page_change(page, previous_url: str, previous_signature: str) -> bo
     return False
 
 
-def click_next_page(page, current_page_number: int) -> bool:
+def click_next_page(
+    page,
+    current_page_number: int,
+    *,
+    wait_after_pagination_ms: int = CASAFARI_WAIT_AFTER_PAGINATION_MS,
+    wait_between_page_checks_ms: int = CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS,
+    page_change_max_wait_ms: int = CASAFARI_PAGE_CHANGE_MAX_WAIT_MS,
+    scroll_wait_ms: int = 500,
+) -> bool:
     previous_url = page.url
     previous_signature = get_page_signature(page)
 
     try:
         page.mouse.wheel(0, 4000)
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(scroll_wait_ms)
     except Exception:
         pass
 
@@ -1129,9 +1200,15 @@ def click_next_page(page, current_page_number: int) -> bool:
             except PlaywrightTimeoutError:
                 pass
 
-            page.wait_for_timeout(CASAFARI_WAIT_AFTER_PAGINATION_MS)
+            page.wait_for_timeout(wait_after_pagination_ms)
 
-            if wait_for_page_change(page, previous_url, previous_signature):
+            if wait_for_page_change(
+                page,
+                previous_url,
+                previous_signature,
+                wait_between_page_checks_ms=wait_between_page_checks_ms,
+                page_change_max_wait_ms=page_change_max_wait_ms,
+            ):
                 return True
         except Exception:
             continue
@@ -1147,13 +1224,20 @@ class CasafariHistoryConnector:
         if self.progress_callback:
             self.progress_callback(message, current, total)
 
-    def fetch_history(self, from_dt: datetime, to_dt: datetime) -> dict:
+    def fetch_history(
+        self,
+        from_dt: datetime,
+        to_dt: datetime,
+        *,
+        sync_mode: str = "balanced",
+    ) -> dict:
         if not CASAFARI_STORAGE_STATE_PATH.exists():
             raise FileNotFoundError(
                 f"No existe la sesión guardada: {CASAFARI_STORAGE_STATE_PATH}. "
                 "Ejecuta primero tools.save_casafari_session."
             )
 
+        options = resolve_fetch_options(sync_mode)
         base_url = load_history_base_url()
         target_url = build_history_url(base_url, from_dt, to_dt)
 
@@ -1177,7 +1261,7 @@ class CasafariHistoryConnector:
         warnings: list[str] = []
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=CASAFARI_HEADLESS)
+            browser = p.chromium.launch(headless=options.headless)
             context = browser.new_context(
                 locale="es-ES",
                 storage_state=str(CASAFARI_STORAGE_STATE_PATH),
@@ -1218,7 +1302,7 @@ class CasafariHistoryConnector:
             except PlaywrightTimeoutError:
                 page.goto(target_url, wait_until="commit", timeout=45000)
 
-            page.wait_for_timeout(CASAFARI_WAIT_AFTER_GOTO_MS)
+            page.wait_for_timeout(options.wait_after_goto_ms)
             final_url = page.url
 
             body_text_after_goto = page.locator("body").inner_text(timeout=15000)
@@ -1241,19 +1325,19 @@ class CasafariHistoryConnector:
 
             payload_cursor = 0
 
-            while page_number <= CASAFARI_MAX_PAGES_PER_SYNC:
+            while page_number <= options.max_pages:
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=10000)
                 except PlaywrightTimeoutError:
                     pass
 
-                page.wait_for_timeout(1500)
+                page.wait_for_timeout(options.settle_wait_ms)
 
                 try:
                     page.mouse.wheel(0, 3000)
-                    page.wait_for_timeout(600)
+                    page.wait_for_timeout(options.scroll_wait_ms)
                     page.mouse.wheel(0, -1500)
-                    page.wait_for_timeout(600)
+                    page.wait_for_timeout(options.scroll_wait_ms)
                 except Exception:
                     pass
 
@@ -1333,7 +1417,14 @@ class CasafariHistoryConnector:
                     )
                     break
 
-                if not click_next_page(page, page_number):
+                if not click_next_page(
+                    page,
+                    page_number,
+                    wait_after_pagination_ms=options.wait_after_pagination_ms,
+                    wait_between_page_checks_ms=options.wait_between_page_checks_ms,
+                    page_change_max_wait_ms=options.page_change_max_wait_ms,
+                    scroll_wait_ms=options.scroll_wait_ms,
+                ):
                     if total_expected and len(all_items) < total_expected:
                         warnings.append(
                             f"No se pudo avanzar a la página siguiente. "
@@ -1354,6 +1445,7 @@ class CasafariHistoryConnector:
                     "total_expected": total_expected,
                     "coverage_gap": max(total_expected - len(all_items), 0) if total_expected else None,
                     "extractor_used": extractor_used,
+                    "sync_mode": options.mode,
                     "candidate_payloads": len([p for p in captured_payloads if p.get("score", 0) > 0]),
                     "captured_payloads_total": len(captured_payloads),
                     "warnings": warnings,
@@ -1367,6 +1459,7 @@ class CasafariHistoryConnector:
             "final_url": final_url,
             "items": all_items,
             "debug_dir": str(debug_dir),
+            "sync_mode": options.mode,
             "extractor_used": extractor_used,
             "pages_seen": page_number,
             "candidate_payload_count": len([p for p in captured_payloads if p.get("score", 0) > 0]),
