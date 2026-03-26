@@ -79,6 +79,67 @@ def test_spatial_map_payload_exposes_viewport_and_layers(monkeypatch) -> None:
                 }
             ],
         )
+        monkeypatch.setattr(
+            spatial_map_service,
+            "get_zone_intelligence_v2",
+            lambda session, window_days=14: [
+                {
+                    "zone_label": "Prosperidad",
+                    "zone_capture_score": 68.0,
+                    "zone_heat_score": 62.0,
+                    "zone_relative_heat_score": 59.0,
+                    "zone_pressure_score": 44.0,
+                    "zone_transformation_signal_score": 28.0,
+                    "zone_liquidity_score": 41.0,
+                    "predicted_absorption_30d_score": 52.0,
+                    "zone_confidence_score": 73.0,
+                    "recommended_action": "Seguir y vigilar",
+                    "score_explanation": "evt/10k hab alto",
+                    "official_population": 36961,
+                    "events_14d_per_10k_population": 0.5,
+                },
+                {
+                    "zone_label": "Guindalera",
+                    "zone_capture_score": 55.0,
+                    "zone_heat_score": 48.0,
+                    "zone_relative_heat_score": 45.0,
+                    "zone_pressure_score": 50.0,
+                    "zone_transformation_signal_score": 19.0,
+                    "zone_liquidity_score": 39.0,
+                    "predicted_absorption_30d_score": 47.0,
+                    "zone_confidence_score": 69.0,
+                    "recommended_action": "Captacion selectiva",
+                    "score_explanation": "barrio estable",
+                    "official_population": 28911,
+                    "events_14d_per_10k_population": 0.4,
+                },
+            ],
+        )
+        monkeypatch.setattr(
+            spatial_map_service,
+            "load_official_boundary_topology",
+            lambda level: {
+                "type": "Topology",
+                "objects": {
+                    "DISTRITOS" if level == "districts" else "BARRIOS": {
+                        "type": "GeometryCollection",
+                        "geometries": [
+                            {
+                                "type": "Polygon",
+                                "arcs": [[0]],
+                                "properties": (
+                                    {"NOMBRE": "Salamanca"}
+                                    if level == "districts"
+                                    else {"NOMBRE": "Prosperidad", "NOMDIS": "Chamartin"}
+                                ),
+                            }
+                        ],
+                    }
+                },
+                "arcs": [[[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]]],
+                "transform": {"scale": [1, 1], "translate": [0, 0]},
+            },
+        )
 
         payload = spatial_map_service.get_spatial_map_payload(
             session,
@@ -87,16 +148,24 @@ def test_spatial_map_payload_exposes_viewport_and_layers(monkeypatch) -> None:
             min_score=50.0,
             zone_query="pro",
             layer_mode="both",
+            boundary_level="neighborhoods",
+            zone_metric_mode="capture",
+            heat_mode="on",
         )
 
         assert payload["window_days"] == 30
         assert payload["summary"]["geo_opportunities_total"] == 2
         assert payload["summary"]["high_priority_geo_opportunities"] == 1
         assert payload["summary"]["microzones_total"] == 1
+        assert payload["summary"]["zones_with_boundaries"] == 1
         assert payload["viewport"]["center"]["lat"] > 40.42
         assert payload["viewport"]["bounds"]["west"] < -3.69
         assert payload["points"][0]["event_id"] == 10
         assert payload["microzones"][0]["microzone_label"] == "Prosperidad / MZ a-b"
+        assert payload["zone_metric"]["label"] == "Capture"
+        assert payload["boundaries"]["neighborhoods"]["matched_count"] == 1
+        assert payload["heat_points"]
+        assert payload["top_zones"][0]["zone_label"] == "Prosperidad"
     finally:
         session.close()
 
@@ -132,14 +201,27 @@ def test_spatial_map_payload_can_focus_single_layer(monkeypatch) -> None:
                 }
             ],
         )
+        monkeypatch.setattr(
+            spatial_map_service,
+            "get_zone_intelligence_v2",
+            lambda session, window_days=14: [],
+        )
+        monkeypatch.setattr(
+            spatial_map_service,
+            "load_official_boundary_topology",
+            lambda level: None,
+        )
 
         payload = spatial_map_service.get_spatial_map_payload(
             session,
             layer_mode="microzones",
+            boundary_level="none",
+            heat_mode="off",
         )
 
         assert payload["points"] == []
         assert len(payload["microzones"]) == 1
+        assert payload["heat_points"] == []
         assert payload["viewport"]["bounds"]["north"] == 40.433
     finally:
         session.close()

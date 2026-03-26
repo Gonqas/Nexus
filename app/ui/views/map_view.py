@@ -84,6 +84,7 @@ class MapView(QWidget):
         self.payload: dict | None = None
         self.selected_event_id: int | None = None
         self.selected_microzone_label: str | None = None
+        self.selected_zone_label: str | None = None
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -143,6 +144,30 @@ class MapView(QWidget):
         self.layer_combo.addItems(["both", "opportunities", "microzones"])
         self.layer_combo.currentTextChanged.connect(self.load_data)
 
+        self.boundary_combo = QComboBox()
+        self.boundary_combo.addItems(["none", "districts", "neighborhoods"])
+        self.boundary_combo.setCurrentText("neighborhoods")
+        self.boundary_combo.currentTextChanged.connect(self.load_data)
+
+        self.metric_combo = QComboBox()
+        self.metric_combo.addItems(
+            [
+                "capture",
+                "heat",
+                "relative_heat",
+                "pressure",
+                "transformation",
+                "predictive",
+                "confidence",
+                "liquidity",
+            ]
+        )
+        self.metric_combo.currentTextChanged.connect(self.load_data)
+
+        self.heat_combo = QComboBox()
+        self.heat_combo.addItems(["on", "off"])
+        self.heat_combo.currentTextChanged.connect(self.load_data)
+
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Filtrar por zona, microzona o direccion")
         self.search_input.returnPressed.connect(self.load_data)
@@ -158,6 +183,12 @@ class MapView(QWidget):
         controls.addWidget(self.score_combo)
         controls.addWidget(QLabel("Capas:"))
         controls.addWidget(self.layer_combo)
+        controls.addWidget(QLabel("Superficie:"))
+        controls.addWidget(self.boundary_combo)
+        controls.addWidget(QLabel("Metrica:"))
+        controls.addWidget(self.metric_combo)
+        controls.addWidget(QLabel("Heat:"))
+        controls.addWidget(self.heat_combo)
         controls.addWidget(self.search_input)
         controls.addWidget(self.refresh_button)
 
@@ -178,11 +209,13 @@ class MapView(QWidget):
         self.high_card = SpatialStatCard("Alta prioridad")
         self.score_card = SpatialStatCard("Score medio")
         self.micro_card = SpatialStatCard("Microzonas")
+        self.zone_card = SpatialStatCard("Zonas cartografiadas")
 
         summary_grid.addWidget(self.geo_card, 0, 0)
         summary_grid.addWidget(self.high_card, 0, 1)
         summary_grid.addWidget(self.score_card, 0, 2)
         summary_grid.addWidget(self.micro_card, 0, 3)
+        summary_grid.addWidget(self.zone_card, 0, 4)
         layout.addLayout(summary_grid)
 
         splitter = QSplitter()
@@ -225,6 +258,13 @@ class MapView(QWidget):
         self.microzones_table.table.itemSelectionChanged.connect(self.on_microzone_selected)
         right_layout.addWidget(self.microzones_table)
 
+        self.zones_table = SpatialTable(
+            "Top zonas en superficie",
+            ["Metrica", "Zona", "Conf", "Accion", "Resumen"],
+        )
+        self.zones_table.table.itemSelectionChanged.connect(self.on_zone_selected)
+        right_layout.addWidget(self.zones_table)
+
         splitter.addWidget(right_panel)
         splitter.setSizes([1120, 560])
 
@@ -242,6 +282,7 @@ class MapView(QWidget):
     def load_data(self) -> None:
         self.selected_event_id = None
         self.selected_microzone_label = None
+        self.selected_zone_label = None
 
         with SessionLocal() as session:
             self.payload = get_spatial_map_payload(
@@ -251,6 +292,9 @@ class MapView(QWidget):
                 min_score=self._min_score(),
                 zone_query=self.search_input.text(),
                 layer_mode=self.layer_combo.currentText(),
+                boundary_level=self.boundary_combo.currentText(),
+                zone_metric_mode=self.metric_combo.currentText(),
+                heat_mode=self.heat_combo.currentText(),
             )
 
         self.render_payload()
@@ -262,7 +306,9 @@ class MapView(QWidget):
         self.summary_label.setText(
             f"{summary.get('geo_opportunities_total', 0)} oportunidades geolocalizadas y "
             f"{summary.get('microzones_total', 0)} microzonas en ventana {payload.get('window_days', 14)}d. "
-            f"Capas activas: {safe_text(payload.get('layer_mode'))}."
+            f"Capas activas: {safe_text(payload.get('layer_mode'))}. "
+            f"Superficie: {safe_text(payload.get('boundary_level'))} | "
+            f"metrica: {safe_text((payload.get('zone_metric') or {}).get('label'))}."
         )
 
         self.geo_card.set_content(
@@ -281,9 +327,14 @@ class MapView(QWidget):
             safe_text(summary.get("microzones_total", 0)),
             f"hotspots micro {safe_text(summary.get('microzone_hotspots', 0))}",
         )
+        self.zone_card.set_content(
+            safe_text(summary.get("zones_with_boundaries", 0)),
+            f"surface {safe_text(payload.get('boundary_level'))}",
+        )
 
         self._render_opportunities(payload.get("top_opportunities") or [])
         self._render_microzones(payload.get("top_microzones") or [])
+        self._render_zones(payload.get("top_zones") or [])
         self._refresh_map()
 
     def _render_opportunities(self, rows: list[dict]) -> None:
@@ -328,6 +379,27 @@ class MapView(QWidget):
 
         table.resizeColumnsToContents()
 
+    def _render_zones(self, rows: list[dict]) -> None:
+        table = self.zones_table.table
+        table.setRowCount(len(rows))
+        metric_key = ((self.payload or {}).get("zone_metric") or {}).get("key") or "zone_capture_score"
+
+        for row_idx, row in enumerate(rows):
+            values = [
+                safe_float(row.get(metric_key)),
+                safe_text(row.get("zone_label")),
+                safe_float(row.get("zone_confidence_score")),
+                safe_text(row.get("recommended_action")),
+                safe_text(row.get("executive_summary") or row.get("score_explanation")),
+            ]
+            for col_idx, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if col_idx in (0, 2):
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(row_idx, col_idx, item)
+
+        table.resizeColumnsToContents()
+
     def _refresh_map(self) -> None:
         if not self.payload:
             return
@@ -337,6 +409,7 @@ class MapView(QWidget):
             selection={
                 "selected_event_id": self.selected_event_id,
                 "selected_microzone_label": self.selected_microzone_label,
+                "selected_zone_label": self.selected_zone_label,
             },
         )
 
@@ -353,6 +426,7 @@ class MapView(QWidget):
         row = rows[row_idx]
         self.selected_event_id = row.get("event_id")
         self.selected_microzone_label = None
+        self.selected_zone_label = row.get("zone_label")
         self.focus_label.setText(
             f"Oportunidad #{safe_text(row.get('event_id'))}\n"
             f"{safe_text(row.get('asset_address'))}\n"
@@ -374,11 +448,36 @@ class MapView(QWidget):
         row = rows[row_idx]
         self.selected_microzone_label = row.get("microzone_label")
         self.selected_event_id = None
+        self.selected_zone_label = row.get("parent_zone_label")
         self.focus_label.setText(
             f"{safe_text(row.get('microzone_label'))}\n"
             f"Base: {safe_text(row.get('parent_zone_label'))}\n"
             f"Capture {safe_float(row.get('microzone_capture_score'))} | "
             f"Confianza {safe_float(row.get('microzone_confidence_score'))}\n"
             f"{safe_text(row.get('recommended_action'))} | {safe_text(row.get('radar_explanation'))}"
+        )
+        self._refresh_map()
+
+    def on_zone_selected(self) -> None:
+        rows = (self.payload or {}).get("top_zones") or []
+        items = self.zones_table.table.selectedItems()
+        if not items:
+            return
+
+        row_idx = items[0].row()
+        if row_idx < 0 or row_idx >= len(rows):
+            return
+
+        row = rows[row_idx]
+        metric = (self.payload or {}).get("zone_metric") or {}
+        self.selected_zone_label = row.get("zone_label")
+        self.selected_event_id = None
+        self.selected_microzone_label = None
+        self.focus_label.setText(
+            f"{safe_text(row.get('zone_label'))}\n"
+            f"{safe_text(metric.get('label'))}: {safe_float(row.get(metric.get('key')))} | "
+            f"Confianza {safe_float(row.get('zone_confidence_score'))}\n"
+            f"{safe_text(row.get('recommended_action'))}\n"
+            f"{safe_text(row.get('executive_summary') or row.get('score_explanation'))}"
         )
         self._refresh_map()

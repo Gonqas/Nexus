@@ -102,6 +102,8 @@ def _leaflet_html(payload: dict[str, Any], selection: dict[str, Any] | None = No
 <body>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
   <script>
     const payload = {payload_json};
     const selection = {selection_json};
@@ -134,6 +136,30 @@ def _leaflet_html(payload: dict[str, Any], selection: dict[str, Any] | None = No
 
     function selectedStroke(isSelected) {{
       return isSelected ? "#223036" : "#ffffff";
+    }}
+
+    function normalizeKey(value) {{
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\\u0300-\\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\\s,.-]/g, "")
+        .replace(/\\s+/g, " ")
+        .trim();
+    }}
+
+    function zoneColor(value) {{
+      const score = Number(value || 0);
+      if (score >= 75) return "#a33823";
+      if (score >= 62) return "#c45c33";
+      if (score >= 50) return "#dd8a4b";
+      if (score >= 38) return "#f0b36d";
+      if (score > 0) return "#f6d8a8";
+      return "#ebe5dc";
+    }}
+
+    function zoneStroke(isSelected) {{
+      return isSelected ? "#1f2933" : "#a89682";
     }}
 
     const opportunityLayer = L.layerGroup();
@@ -193,6 +219,100 @@ def _leaflet_html(payload: dict[str, Any], selection: dict[str, Any] | None = No
       bounds.push([row.lat, row.lon]);
     }});
 
+    const boundaryOverlays = {{}};
+    const activeBoundaryLevel = payload.boundary_level || "neighborhoods";
+    const zoneMetric = payload.zone_metric || {{}};
+    const boundaries = payload.boundaries || {{}};
+
+    function buildBoundaryLayer(level, title) {{
+      const layerPayload = boundaries[level];
+      if (!layerPayload || !layerPayload.topology) {{
+        return null;
+      }}
+
+      const topology = layerPayload.topology;
+      const objectName = layerPayload.object_name;
+      const objectDef = topology.objects[objectName];
+      if (!objectDef) {{
+        return null;
+      }}
+
+      const features = topojson.feature(topology, objectDef).features;
+      const zoneLookup = layerPayload.zone_lookup || {{}};
+      const labelKey = layerPayload.label_key;
+      const parentKey = layerPayload.parent_key;
+
+      return L.geoJSON(features, {{
+        style: function(feature) {{
+          const props = feature.properties || {{}};
+          const zoneKey = normalizeKey(props[labelKey]);
+          const zoneData = zoneLookup[zoneKey] || {{}};
+          const isSelected = selection.selected_zone_label && normalizeKey(selection.selected_zone_label) === zoneKey;
+          return {{
+            color: zoneStroke(isSelected),
+            weight: isSelected ? 3 : 1.2,
+            fillColor: zoneColor(zoneData.metric_value),
+            fillOpacity: activeBoundaryLevel === level ? 0.34 : 0.18,
+          }};
+        }},
+        onEachFeature: function(feature, layer) {{
+          const props = feature.properties || {{}};
+          const zoneKey = normalizeKey(props[labelKey]);
+          const zoneData = zoneLookup[zoneKey] || {{}};
+          const zoneLabel = props[labelKey] || "Zona";
+          const parentLabel = parentKey ? props[parentKey] : null;
+          const parentLine = parentLabel
+            ? `<div class="popup-line">Distrito: ${{escapeHtml(parentLabel)}}</div>`
+            : "";
+
+          layer.bindPopup(`
+            <div class="popup-title">${{escapeHtml(zoneLabel)}}</div>
+            <div class="popup-line">Nivel: ${{escapeHtml(title)}}</div>
+            ${{parentLine}}
+            <div class="popup-line">${{escapeHtml(zoneMetric.label || "Metrica")}}: ${{escapeHtml(zoneData.metric_value ?? "-")}}</div>
+            <div class="popup-line">Confianza: ${{escapeHtml(zoneData.zone_confidence_score ?? "-")}} | Heat rel: ${{escapeHtml(zoneData.zone_relative_heat_score ?? "-")}}</div>
+            <div class="popup-line">Accion: ${{escapeHtml(zoneData.recommended_action ?? "-")}}</div>
+            <div class="popup-line">${{escapeHtml(zoneData.score_explanation ?? "")}}</div>
+          `);
+        }},
+      }});
+    }}
+
+    const districtLayer = buildBoundaryLayer("districts", "Distritos");
+    const neighborhoodLayer = buildBoundaryLayer("neighborhoods", "Barrios");
+    if (districtLayer) {{
+      boundaryOverlays["Distritos"] = districtLayer;
+      if (activeBoundaryLevel === "districts") {{
+        districtLayer.addTo(map);
+      }}
+    }}
+    if (neighborhoodLayer) {{
+      boundaryOverlays["Barrios"] = neighborhoodLayer;
+      if (activeBoundaryLevel === "neighborhoods") {{
+        neighborhoodLayer.addTo(map);
+      }}
+    }}
+
+    let heatLayer = null;
+    if ((payload.heat_points || []).length) {{
+      heatLayer = L.heatLayer(payload.heat_points, {{
+        radius: 26,
+        blur: 22,
+        maxZoom: 16,
+        minOpacity: 0.22,
+        gradient: {{
+          0.2: "#f6d8a8",
+          0.45: "#f0b36d",
+          0.65: "#dd8a4b",
+          0.85: "#c45c33",
+          1.0: "#8e311e",
+        }},
+      }});
+      if ((payload.heat_mode || "off") === "on") {{
+        heatLayer.addTo(map);
+      }}
+    }}
+
     const overlays = {{}};
     if (payload.points.length) {{
       overlays["Oportunidades"] = opportunityLayer;
@@ -201,6 +321,10 @@ def _leaflet_html(payload: dict[str, Any], selection: dict[str, Any] | None = No
     if (payload.microzones.length) {{
       overlays["Microzonas"] = microzoneLayer;
       microzoneLayer.addTo(map);
+    }}
+    Object.assign(overlays, boundaryOverlays);
+    if (heatLayer) {{
+      overlays["Heat"] = heatLayer;
     }}
     if (Object.keys(overlays).length > 1) {{
       L.control.layers(null, overlays, {{ collapsed: false }}).addTo(map);
@@ -224,6 +348,8 @@ def _leaflet_html(payload: dict[str, Any], selection: dict[str, Any] | None = No
         <p>Alta prioridad: <strong>${{escapeHtml(summary.high_priority_geo_opportunities || 0)}}</strong></p>
         <p>Microzonas: <strong>${{escapeHtml(summary.microzones_total || 0)}}</strong></p>
         <p>Hotspots micro: <strong>${{escapeHtml(summary.microzone_hotspots || 0)}}</strong></p>
+        <p>Superficie: <strong>${{escapeHtml((payload.boundary_level || "none"))}}</strong></p>
+        <p>Metrica zona: <strong>${{escapeHtml((zoneMetric.label || "-"))}}</strong></p>
       `;
       return div;
     }};
