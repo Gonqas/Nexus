@@ -1,0 +1,48 @@
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+DATA_DIR = BASE_DIR / "data"
+RAW_DIR = DATA_DIR / "raw"
+STATE_DIR = DATA_DIR / "state"
+DEBUG_DIR = DATA_DIR / "debug" / "casafari"
+
+for path in (DATA_DIR, RAW_DIR, STATE_DIR, DEBUG_DIR):
+    path.mkdir(parents=True, exist_ok=True)
+
+CASAFARI_SOURCE_NAME = "casafari_history"
+
+CASAFARI_HISTORY_BASE_URL = (
+    "https://es.casafari.com/account/history"
+    "?id=69b2e8049d0bcd0883a01c4f"
+    "&historyType=new"
+    "&from=2026-02-11T00:00:00.000Z"
+    "&to=2026-03-12T16:28:14.189Z"
+    "&sort=sort-by-date-high-to-low"
+    "&direct=true"
+)
+
+CASAFARI_STORAGE_STATE_PATH = STATE_DIR / "casafari_storage_state.json"
+CASAFARI_VERIFIED_HISTORY_URL_PATH = STATE_DIR / "casafari_verified_history_url.txt"
+
+CASAFARI_DEBUG_BASE_DIR = DEBUG_DIR
+CASAFARI_DEBUG_HTML_DIR = CASAFARI_DEBUG_BASE_DIR / "html"
+CASAFARI_DEBUG_SCREENSHOT_DIR = CASAFARI_DEBUG_BASE_DIR / "screenshots"
+CASAFARI_DEBUG_TEXT_DIR = CASAFARI_DEBUG_BASE_DIR / "text"
+CASAFARI_DEBUG_NETWORK_DIR = CASAFARI_DEBUG_BASE_DIR / "network"
+
+for path in (
+    CASAFARI_DEBUG_HTML_DIR,
+    CASAFARI_DEBUG_SCREENSHOT_DIR,
+    CASAFARI_DEBUG_TEXT_DIR,
+    CASAFARI_DEBUG_NETWORK_DIR,
+):
+    path.mkdir(parents=True, exist_ok=True)
+
+CASAFARI_HEADLESS = False
+CASAFARI_SYNC_OVERLAP_HOURS = 24
+CASAFARI_MAX_PAGES_PER_SYNC = 40
+CASAFARI_WAIT_AFTER_GOTO_MS = 4000
+CASAFARI_WAIT_AFTER_PAGINATION_MS = 2500
+CASAFARI_WAIT_BETWEEN_PAGE_CHECKS_MS = 700
+CASAFARI_PAGE_CHANGE_MAX_WAIT_MS = 10000
+CASAFARI_BOOTSTRAP_DAYS = 3

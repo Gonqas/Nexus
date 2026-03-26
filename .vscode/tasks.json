@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install project",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\Activate.ps1; pip install -e .[dev]",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run tests",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\Activate.ps1; pytest",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Ruff",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\Activate.ps1; ruff check .",
+      "problemMatcher": []
+    }
+  ]
+}

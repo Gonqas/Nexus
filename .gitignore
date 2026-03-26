@@ -1,0 +1,22 @@
+# entorno
+.venv/
+__pycache__/
+*.pyc
+
+# datos locales
+data/debug/
+data/raw/
+data/processed/
+data/*.sqlite
+data/*.db
+*.sqlite
+*.db
+
+# artefactos
+*.log
+*.tmp
+*.zip
+
+# secretos y env
+.env
+.env.*
