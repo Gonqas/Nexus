@@ -101,6 +101,17 @@ def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, A
         reverse=True,
     )[:12]
 
+    top_transformation = sorted(
+        rows,
+        key=lambda r: (
+            r.get("zone_transformation_signal_score") or 0.0,
+            r.get("change_of_use_per_10k_population") or 0.0,
+            r.get("closed_locales_per_1k_population") or 0.0,
+            r["zone_confidence_score"],
+        ),
+        reverse=True,
+    )[:12]
+
     top_liquidity = sorted(
         rows,
         key=lambda r: (r["_liquidity_sort"], r["absorption_count"], r["zone_confidence_score"]),
@@ -118,6 +129,7 @@ def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, A
         "top_capture": top_capture,
         "top_heat": top_heat,
         "top_pressure": top_pressure,
+        "top_transformation": top_transformation,
         "top_liquidity": top_liquidity,
         "low_confidence": low_confidence,
     }

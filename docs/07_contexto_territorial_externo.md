@@ -22,8 +22,10 @@ Levantar una capa grande y reutilizable de fuentes publicas oficiales para Madri
 
 - `core/discovery/external_context_catalog.py`
 - `core/services/external_context_service.py`
+- `core/services/external_zone_context_service.py`
 - `tools/build_external_context_catalog.py`
 - `tools/download_external_context_resources.py`
+- `tools/build_external_zone_context.py`
 
 ## Salidas generadas
 
@@ -87,3 +89,20 @@ Cuando queramos cruzar esta capa con el nucleo:
 2. crear tablas derivadas por zona
 3. sumar estas metricas al radar y a la cola
 4. abrir una vista de catalogo/descargas para inspeccion operativa
+
+## Senales urbanas ya incorporadas
+
+El contexto de zona ya mezcla, cuando existe dato oficial:
+
+- poblacion por barrio y distrito
+- vulnerabilidad territorial IGUALA
+- renta y valor catastral medios
+- licencias urbanisticas recientes
+- cambios de uso y transformacion de locales en viviendas
+- stock de locales abiertos/cerrados
+- viviendas de uso turistico con licencia
+
+Nota sobre ITE:
+
+- no he encontrado hoy un dataset oficial reutilizable de ITE por expediente o direccion en el portal abierto del Ayuntamiento
+- si apareciera en abierto, encaja directamente en este mismo builder de contexto por zona
