@@ -34,7 +34,25 @@ def safe_money(value) -> str:
     if value is None:
         return "-"
     try:
-        return f"{float(value):,.0f} €".replace(",", ".")
+        return f"{float(value):,.0f} EUR".replace(",", ".")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def safe_float(value, decimals: int = 1) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.{decimals}f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def safe_int(value) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{int(round(float(value))):,}".replace(",", ".")
     except (TypeError, ValueError):
         return str(value)
 
@@ -56,7 +74,7 @@ class OpportunityQueueView(QWidget):
         title.setStyleSheet("font-size: 22px; font-weight: bold;")
 
         subtitle = QLabel(
-            "Eventos priorizados con filtros, agrupación operativa y detalle explicable para trabajo diario."
+            "Eventos priorizados con filtros, agrupacion operativa y lectura territorial util para el trabajo diario."
         )
         subtitle.setStyleSheet("color: #666;")
         subtitle.setWordWrap(True)
@@ -106,7 +124,9 @@ class OpportunityQueueView(QWidget):
         self.group_combo.currentTextChanged.connect(self.on_group_mode_changed)
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Filtrar por zona, dirección, portal o teléfono")
+        self.search_input.setPlaceholderText(
+            "Filtrar por zona, direccion, portal o telefono"
+        )
         self.search_input.textChanged.connect(self.apply_filters_and_render)
 
         controls.addWidget(QLabel("Ventana:"))
@@ -115,7 +135,7 @@ class OpportunityQueueView(QWidget):
         controls.addWidget(self.event_combo)
         controls.addWidget(QLabel("Geo:"))
         controls.addWidget(self.geo_combo)
-        controls.addWidget(QLabel("Score mín:"))
+        controls.addWidget(QLabel("Score min:"))
         controls.addWidget(self.score_combo)
         controls.addWidget(QLabel("Agrupar:"))
         controls.addWidget(self.group_combo)
@@ -133,12 +153,12 @@ class OpportunityQueueView(QWidget):
         left_splitter = QSplitter(Qt.Orientation.Vertical)
         main_splitter.addWidget(left_splitter)
 
-        self.groups_group = QGroupBox("Agrupación")
+        self.groups_group = QGroupBox("Agrupacion")
         groups_layout = QVBoxLayout(self.groups_group)
         self.groups_table = QTableWidget()
         self.groups_table.setColumnCount(6)
         self.groups_table.setHorizontalHeaderLabels(
-            ["Grupo", "Eventos", "Top", "Media", "Último", "Motivo top"]
+            ["Grupo", "Eventos", "Top", "Media", "Ultimo", "Motivo top"]
         )
         self.groups_table.verticalHeader().setVisible(False)
         self.groups_table.itemSelectionChanged.connect(self.on_group_selected)
@@ -154,7 +174,7 @@ class OpportunityQueueView(QWidget):
                 "Fecha",
                 "Evento",
                 "Zona",
-                "Acción zona",
+                "Accion zona",
                 "Portal",
                 "Contacto",
                 "Perfil tlf",
@@ -186,8 +206,16 @@ class OpportunityQueueView(QWidget):
         self.lbl_breakdown.setWordWrap(True)
         self.lbl_zone = QLabel("-")
         self.lbl_zone_capture = QLabel("-")
+        self.lbl_zone_relative_heat = QLabel("-")
+        self.lbl_zone_transform = QLabel("-")
         self.lbl_zone_pressure = QLabel("-")
         self.lbl_zone_confidence = QLabel("-")
+        self.lbl_zone_context = QLabel("-")
+        self.lbl_zone_context.setWordWrap(True)
+        self.lbl_microzone = QLabel("-")
+        self.lbl_microzone.setWordWrap(True)
+        self.lbl_microzone_scores = QLabel("-")
+        self.lbl_microzone_scores.setWordWrap(True)
         self.lbl_asset = QLabel("-")
         self.lbl_asset.setWordWrap(True)
         self.lbl_geo = QLabel("-")
@@ -200,8 +228,13 @@ class OpportunityQueueView(QWidget):
         summary_form.addRow("Breakdown", self.lbl_breakdown)
         summary_form.addRow("Zona", self.lbl_zone)
         summary_form.addRow("Capture zona", self.lbl_zone_capture)
+        summary_form.addRow("Heat relativo", self.lbl_zone_relative_heat)
+        summary_form.addRow("Transformacion", self.lbl_zone_transform)
         summary_form.addRow("Pressure zona", self.lbl_zone_pressure)
         summary_form.addRow("Confidence zona", self.lbl_zone_confidence)
+        summary_form.addRow("Contexto zona", self.lbl_zone_context)
+        summary_form.addRow("Microzona", self.lbl_microzone)
+        summary_form.addRow("Scores micro", self.lbl_microzone_scores)
         summary_form.addRow("Activo", self.lbl_asset)
         summary_form.addRow("Geo", self.lbl_geo)
         summary_form.addRow("Precio", self.lbl_price)
@@ -299,9 +332,9 @@ class OpportunityQueueView(QWidget):
         self.groups_table.resizeColumnsToContents()
 
         if self.group_combo.currentText() == "none":
-            self.groups_group.setTitle("Agrupación desactivada")
+            self.groups_group.setTitle("Agrupacion desactivada")
         else:
-            self.groups_group.setTitle(f"Agrupación por {self.group_combo.currentText()}")
+            self.groups_group.setTitle(f"Agrupacion por {self.group_combo.currentText()}")
 
     def _render_rows(self) -> None:
         self.table.setRowCount(len(self.visible_rows))
@@ -317,7 +350,7 @@ class OpportunityQueueView(QWidget):
                 safe_text(row["portal"]),
                 safe_text(row["contact_group_label"]),
                 safe_text(row["phone_profile"]),
-                "Sí" if row["has_geo_point"] else "No",
+                "Si" if row["has_geo_point"] else "No",
                 safe_money(row["price_new"]),
                 safe_text(row["reason"]),
             ]
@@ -373,7 +406,9 @@ class OpportunityQueueView(QWidget):
 
     def load_detail(self, event_id: int) -> None:
         with SessionLocal() as session:
-            detail = get_opportunity_detail_v2(session, event_id, window_days=self._window_days())
+            detail = get_opportunity_detail_v2(
+                session, event_id, window_days=self._window_days()
+            )
 
         if not detail.get("found"):
             self.clear_detail()
@@ -391,18 +426,36 @@ class OpportunityQueueView(QWidget):
         self.lbl_reason.setText(safe_text(row["reason"]))
         self.lbl_breakdown.setText(safe_text(row["score_breakdown"]))
         self.lbl_zone.setText(
-            f"{safe_text(row['zone_label'])} · {safe_text(row['zone_recommended_action'])}"
+            f"{safe_text(row['zone_label'])} | {safe_text(row['zone_recommended_action'])}"
         )
         self.lbl_zone_capture.setText(safe_text(row["zone_capture_score"]))
+        self.lbl_zone_relative_heat.setText(safe_text(row["zone_relative_heat_score"]))
+        self.lbl_zone_transform.setText(
+            safe_text(row["zone_transformation_signal_score"])
+        )
         self.lbl_zone_pressure.setText(safe_text(row["zone_pressure_score"]))
         self.lbl_zone_confidence.setText(safe_text(row["zone_confidence_score"]))
+        self.lbl_zone_context.setText(
+            f"poblacion: {safe_int(row.get('zone_population'))} | "
+            f"evt/10k: {safe_float(row.get('zone_events_14d_per_10k_population'))} | "
+            f"IVT: {safe_float(row.get('zone_vulnerability_index'))}"
+        )
+        self.lbl_microzone.setText(
+            f"{safe_text(row.get('microzone_label'))} | "
+            f"{safe_text(row.get('microzone_recommended_action'))}"
+        )
+        self.lbl_microzone_scores.setText(
+            f"capture: {safe_text(row.get('microzone_capture_score'))} | "
+            f"concentracion: {safe_text(row.get('microzone_concentration_score'))} | "
+            f"confidence: {safe_text(row.get('microzone_confidence_score'))}"
+        )
         self.lbl_asset.setText(
-            f"{safe_text(row['asset_address'])} · {safe_text(row['asset_type'])}"
+            f"{safe_text(row['asset_address'])} | {safe_text(row['asset_type'])}"
         )
         self.lbl_geo.setText(
             f"barrio: {safe_text(row['asset_neighborhood'])} | "
             f"distrito: {safe_text(row['asset_district'])} | "
-            f"coords: {'Sí' if row['has_geo_point'] else 'No'}"
+            f"coords: {'Si' if row['has_geo_point'] else 'No'}"
         )
         self.lbl_price.setText(
             f"nuevo: {safe_money(row['price_new'])} | anterior: {safe_money(row['price_old'])}"
@@ -413,7 +466,7 @@ class OpportunityQueueView(QWidget):
 
         self.comps_summary_label.setText(
             f"comparables={safe_text(comps_summary.get('comparables_count'))} | "
-            f"€/m² medio={safe_money(comps_summary.get('avg_comparable_price_m2'))} | "
+            f"EUR/m2 medio={safe_money(comps_summary.get('avg_comparable_price_m2'))} | "
             f"modo={'estricto' if comps_summary.get('used_strict_mode') else 'ampliado'}"
         )
 
@@ -438,8 +491,13 @@ class OpportunityQueueView(QWidget):
         self.lbl_breakdown.setText("-")
         self.lbl_zone.setText("-")
         self.lbl_zone_capture.setText("-")
+        self.lbl_zone_relative_heat.setText("-")
+        self.lbl_zone_transform.setText("-")
         self.lbl_zone_pressure.setText("-")
         self.lbl_zone_confidence.setText("-")
+        self.lbl_zone_context.setText("-")
+        self.lbl_microzone.setText("-")
+        self.lbl_microzone_scores.setText("-")
         self.lbl_asset.setText("-")
         self.lbl_geo.setText("-")
         self.lbl_price.setText("-")

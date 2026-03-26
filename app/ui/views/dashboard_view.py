@@ -69,7 +69,7 @@ class DashboardView(QWidget):
         header_title.addWidget(title)
 
         subtitle = QLabel(
-            "Conteos, calidad de raw, cobertura geo, breakdown de eventos y salud de sync para no trabajar a ciegas."
+            "Conteos, calidad de raw, cobertura geo, transformacion territorial y salud de sync para no trabajar a ciegas."
         )
         subtitle.setStyleSheet("color: #666;")
         subtitle.setWordWrap(True)
@@ -109,6 +109,10 @@ class DashboardView(QWidget):
         self.raw_price_quality_card = StatCard("Raw sin precio fiable", "0.0%")
         self.raw_address_quality_card = StatCard("Raw dir pobre", "0.0%")
         self.raw_flow_card = StatCard("Flow raw 7d", "0")
+        self.change_use_card = StatCard("Cambios uso 24m", "0")
+        self.closed_locales_card = StatCard("Locales cerrados", "0")
+        self.vut_units_card = StatCard("VUT", "0")
+        self.transform_zones_card = StatCard("Zonas transformacion", "0")
 
         cards = [
             self.assets_card,
@@ -129,6 +133,10 @@ class DashboardView(QWidget):
             self.raw_price_quality_card,
             self.raw_address_quality_card,
             self.raw_flow_card,
+            self.change_use_card,
+            self.closed_locales_card,
+            self.vut_units_card,
+            self.transform_zones_card,
         ]
 
         for idx, card in enumerate(cards):
@@ -148,12 +156,21 @@ class DashboardView(QWidget):
         zones_layout = QVBoxLayout(self.zones_group)
         self.zones_table = QTableWidget(0, 5)
         self.zones_table.setHorizontalHeaderLabels(
-            ["Zona", "Confidence", "Raw", "Geo", "Acción"]
+            ["Zona", "Confidence", "Raw", "Geo", "Accion"]
         )
         zones_layout.addWidget(self.zones_table)
         detail_layout.addWidget(self.zones_group)
 
-        self.sync_group = QGroupBox("Estado del último sync Casafari")
+        self.transformation_group = QGroupBox("Zonas con senal transformadora")
+        transformation_layout = QVBoxLayout(self.transformation_group)
+        self.transformation_table = QTableWidget(0, 6)
+        self.transformation_table.setHorizontalHeaderLabels(
+            ["Zona", "Transform", "Cambio uso", "Locales cerrados", "VUT", "Accion"]
+        )
+        transformation_layout.addWidget(self.transformation_table)
+        detail_layout.addWidget(self.transformation_group)
+
+        self.sync_group = QGroupBox("Estado del ultimo sync Casafari")
         sync_form = QFormLayout(self.sync_group)
         self.sync_status_label = QLabel("-")
         self.sync_finished_label = QLabel("-")
@@ -163,8 +180,8 @@ class DashboardView(QWidget):
         self.sync_message_label.setWordWrap(True)
 
         sync_form.addRow("Estado", self.sync_status_label)
-        sync_form.addRow("Último fin", self.sync_finished_label)
-        sync_form.addRow("Ítems vistos", self.sync_items_label)
+        sync_form.addRow("Ultimo fin", self.sync_finished_label)
+        sync_form.addRow("Items vistos", self.sync_items_label)
         sync_form.addRow("Ventana", self.sync_window_label)
         sync_form.addRow("Mensaje", self.sync_message_label)
         self.layout.addWidget(self.sync_group)
@@ -195,7 +212,7 @@ class DashboardView(QWidget):
         self.casafari_resolved_card.set_value(str(stats["casafari_resolved"]))
         self.casafari_resolved_card.set_detail(f"ratio={format_pct(stats['casafari_resolved_ratio'])}")
         self.casafari_ambiguous_card.set_value(str(stats["casafari_ambiguous"]))
-        self.casafari_ambiguous_card.set_detail("requieren revisión")
+        self.casafari_ambiguous_card.set_detail("requieren revision")
         self.casafari_unresolved_card.set_value(str(stats["casafari_unresolved"]))
         self.casafari_unresolved_card.set_detail(f"ratio={format_pct(stats['casafari_unresolved_ratio'])}")
         self.casafari_events_card.set_value(str(stats["casafari_events"]))
@@ -205,40 +222,48 @@ class DashboardView(QWidget):
 
         self.geo_district_card.set_value(format_ratio(district_count, assets_total))
         self.geo_district_card.set_detail(f"{district_count}/{assets_total} activos")
-
         self.geo_neighborhood_card.set_value(format_ratio(neighborhood_count, assets_total))
         self.geo_neighborhood_card.set_detail(f"{neighborhood_count}/{assets_total} activos")
-
         self.geo_point_card.set_value(format_ratio(point_count, assets_total))
         self.geo_point_card.set_detail(f"{point_count}/{assets_total} activos")
 
         self.resolved_ratio_card.set_value(format_pct(stats["casafari_resolved_ratio"]))
         self.resolved_ratio_card.set_detail(f"{resolved_count}/{raw_total} raws")
-
         self.unresolved_ratio_card.set_value(format_pct(stats["casafari_unresolved_ratio"]))
         self.unresolved_ratio_card.set_detail(f"{unresolved_count}/{raw_total} raws")
-
         self.raw_price_quality_card.set_value(format_ratio(poor_price_count, raw_total))
         self.raw_price_quality_card.set_detail(f"{poor_price_count}/{raw_total} raws")
-
         self.raw_address_quality_card.set_value(format_ratio(poor_address_count, raw_total))
         self.raw_address_quality_card.set_detail(f"{poor_address_count}/{raw_total} raws")
-
         self.raw_flow_card.set_value(str(stats["casafari_raw_7d"]))
         self.raw_flow_card.set_detail(
             f"30d={safe_text(stats['casafari_raw_30d'])} | sync={safe_text(stats['last_sync_item_count'])}"
         )
 
+        self.change_use_card.set_value(str(stats["total_change_of_use_24m"]))
+        self.change_use_card.set_detail(
+            f"barrios con cambio={safe_text(stats['neighborhoods_with_change_of_use'])}"
+        )
+        self.closed_locales_card.set_value(str(stats["total_closed_locales"]))
+        self.closed_locales_card.set_detail("stock cerrado en barrios con contexto")
+        self.vut_units_card.set_value(str(stats["total_vut_units"]))
+        self.vut_units_card.set_detail("unidades VUT a nivel distrito")
+        self.transform_zones_card.set_value(str(stats["transform_zones_count"]))
+        self.transform_zones_card.set_detail("transformation>=65")
+
         self.summary_label.setText(
             f"Matching visible: resolved {format_pct(stats['casafari_resolved_ratio'])}, "
             f"unresolved {format_pct(stats['casafari_unresolved_ratio'])}. "
             f"Calidad raw: precio no fiable {format_ratio(poor_price_count, raw_total)}, "
-            f"dirección pobre {format_ratio(poor_address_count, raw_total)}. "
+            f"direccion pobre {format_ratio(poor_address_count, raw_total)}. "
+            f"Transformacion: {safe_text(stats['total_change_of_use_24m'])} cambios de uso/24m, "
+            f"{safe_text(stats['transform_zones_count'])} zonas transformadoras. "
             f"Zonas low confidence: {safe_text(stats['low_confidence_zones_count'])}."
         )
 
         self._load_events_table(stats.get("event_type_breakdown", []))
         self._load_zones_table(stats.get("low_confidence_zones", []))
+        self._load_transformation_table(stats.get("top_transformation_zones", []))
 
         self.sync_status_label.setText(safe_text(stats["last_sync_status"]))
         self.sync_finished_label.setText(safe_text(stats["last_sync_finished_at"]))
@@ -272,3 +297,18 @@ class DashboardView(QWidget):
             for col_idx, value in enumerate(values):
                 self.zones_table.setItem(row_idx, col_idx, QTableWidgetItem(value))
         self.zones_table.resizeColumnsToContents()
+
+    def _load_transformation_table(self, rows: list[dict]) -> None:
+        self.transformation_table.setRowCount(len(rows))
+        for row_idx, row in enumerate(rows):
+            values = [
+                safe_text(row.get("zone_label")),
+                safe_text(row.get("zone_transformation_signal_score")),
+                safe_text(row.get("official_change_of_use_24m")),
+                safe_text(row.get("official_locales_closed")),
+                safe_text(row.get("official_vut_units")),
+                safe_text(row.get("recommended_action")),
+            ]
+            for col_idx, value in enumerate(values):
+                self.transformation_table.setItem(row_idx, col_idx, QTableWidgetItem(value))
+        self.transformation_table.resizeColumnsToContents()

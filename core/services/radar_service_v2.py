@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from core.services.microzone_intelligence_service import get_microzone_intelligence
 from core.services.zone_intelligence_service_v2 import get_zone_intelligence_v2
 
 
@@ -77,6 +78,7 @@ def _summary(rows: list[dict], window_days: int) -> dict[str, Any]:
 def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, Any]:
     rows = get_zone_intelligence_v2(session, window_days=window_days)
     rows = _enrich_rows(rows)
+    microzones = get_microzone_intelligence(session, window_days=window_days, limit=16)
 
     top_capture = sorted(
         rows,
@@ -123,13 +125,31 @@ def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, A
         key=lambda r: (r["zone_confidence_score"], -r["casafari_raw_in_zone"]),
     )[:12]
 
+    top_microzones = sorted(
+        microzones,
+        key=lambda row: (
+            row.get("microzone_capture_score") or 0.0,
+            row.get("microzone_concentration_score") or 0.0,
+            row.get("microzone_confidence_score") or 0.0,
+            row.get("events_14d") or 0,
+        ),
+        reverse=True,
+    )[:12]
+
+    summary = _summary(rows, window_days=window_days)
+    summary["microzones_total"] = len(microzones)
+    summary["microzone_hotspots"] = sum(
+        1 for row in microzones if (row.get("microzone_capture_score") or 0) >= 65
+    )
+
     return {
         "window_days": window_days,
-        "summary": _summary(rows, window_days=window_days),
+        "summary": summary,
         "top_capture": top_capture,
         "top_heat": top_heat,
         "top_pressure": top_pressure,
         "top_transformation": top_transformation,
         "top_liquidity": top_liquidity,
         "low_confidence": low_confidence,
+        "top_microzones": top_microzones,
     }

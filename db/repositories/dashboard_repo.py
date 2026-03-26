@@ -163,6 +163,56 @@ def get_dashboard_stats(session: Session) -> dict[str, int | float | str | list[
         for row in low_confidence_zones[:8]
     ]
 
+    transformation_zones = sorted(
+        [row for row in zone_rows if (row.get("zone_transformation_signal_score") or 0) > 0],
+        key=lambda row: (
+            row.get("zone_transformation_signal_score", 0),
+            row.get("change_of_use_per_10k_population") or 0.0,
+            row.get("closed_locales_per_1k_population") or 0.0,
+        ),
+        reverse=True,
+    )
+
+    top_transformation_zone_rows = [
+        {
+            "zone_label": row.get("zone_label"),
+            "zone_transformation_signal_score": row.get("zone_transformation_signal_score"),
+            "official_change_of_use_24m": row.get("official_change_of_use_24m"),
+            "official_locales_closed": row.get("official_locales_closed"),
+            "official_vut_units": row.get("official_vut_units"),
+            "recommended_action": row.get("recommended_action"),
+        }
+        for row in transformation_zones[:8]
+    ]
+
+    neighborhood_rows = [
+        row
+        for row in zone_rows
+        if row.get("context_zone_level") == "neighborhood"
+    ]
+    district_rows = [
+        row
+        for row in zone_rows
+        if row.get("context_zone_level") == "district"
+    ]
+
+    total_change_of_use_24m = int(
+        sum(int(row.get("official_change_of_use_24m") or 0) for row in neighborhood_rows)
+        + sum(int(row.get("official_change_of_use_24m") or 0) for row in district_rows)
+    )
+    total_closed_locales = int(
+        sum(int(row.get("official_locales_closed") or 0) for row in neighborhood_rows)
+    )
+    total_vut_units = int(
+        sum(int(row.get("official_vut_units") or 0) for row in district_rows)
+    )
+    transform_zones_count = sum(
+        1 for row in zone_rows if (row.get("zone_transformation_signal_score") or 0) >= 65
+    )
+    neighborhoods_with_change_of_use = sum(
+        1 for row in neighborhood_rows if int(row.get("official_change_of_use_24m") or 0) > 0
+    )
+
     sync_state = session.scalar(
         select(SourceSyncState).where(SourceSyncState.source_name == CASAFARI_SOURCE_NAME)
     )
@@ -204,6 +254,12 @@ def get_dashboard_stats(session: Session) -> dict[str, int | float | str | list[
         "event_type_breakdown": event_type_breakdown,
         "low_confidence_zones_count": len(low_confidence_zones),
         "low_confidence_zones": low_confidence_zone_rows,
+        "transform_zones_count": transform_zones_count,
+        "neighborhoods_with_change_of_use": neighborhoods_with_change_of_use,
+        "total_change_of_use_24m": total_change_of_use_24m,
+        "total_closed_locales": total_closed_locales,
+        "total_vut_units": total_vut_units,
+        "top_transformation_zones": top_transformation_zone_rows,
         "last_sync_status": sync_state.last_status if sync_state else None,
         "last_sync_started_at": sync_state.last_started_at if sync_state else None,
         "last_sync_finished_at": sync_state.last_finished_at if sync_state else None,
