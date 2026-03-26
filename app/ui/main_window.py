@@ -69,76 +69,76 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Nexus Madrid")
-        self.resize(1760, 1100)
+        self.resize(1720, 1080)
 
         self.page_defs = [
             PageDef(
                 "dashboard",
-                "Panel maestro del nucleo",
-                "Una lectura viva del baseline, matching, territorio y prediccion para operar sin perder contexto.",
-                "Operacion",
+                "Resumen",
+                "Vista corta del estado del sistema: base, Casafari, geografía y señales clave.",
+                "Trabajo diario",
                 DashboardView,
             ),
             PageDef(
                 "queue",
-                "Cola operativa priorizada",
-                "Oportunidades explicadas por zona, microzona y probabilidad de accion a corto plazo.",
-                "Operacion",
+                "Oportunidades",
+                "Lista priorizada para decidir qué revisar o mover hoy.",
+                "Trabajo diario",
                 OpportunityQueueView,
             ),
             PageDef(
                 "radar",
-                "Radar territorial",
-                "Lectura de calor, transformacion, microzonas y prediccion 30d lista para exploracion tactica.",
-                "Operacion",
+                "Zonas",
+                "Lectura territorial simple para detectar dónde hay señal y dónde no.",
+                "Trabajo diario",
                 RadarView,
             ),
             PageDef(
                 "map",
-                "Mapa operativo",
-                "Explora oportunidades geolocalizadas y microzonas sobre el mapa para pasar de la lectura a la accion.",
-                "Operacion",
+                "Mapa",
+                "Contexto espacial para pasar de la lista a una lectura de zona rápida.",
+                "Trabajo diario",
                 MapView,
             ),
             PageDef(
-                "import",
-                "Baseline vivo",
-                "Sube y refresca la base maestra desde la app. El baseline cambia con el tiempo y la interfaz ya lo asume.",
-                "Fuentes",
-                ImportView,
-            ),
-            PageDef(
                 "search",
-                "Busqueda transversal",
-                "Busca por direccion, telefono, portal, raw o reason taxonomy sin salir del flujo.",
-                "Fuentes",
+                "Buscar",
+                "Búsqueda transversal por dirección, teléfono, portal o texto libre.",
+                "Fuentes y datos",
                 SearchView,
             ),
             PageDef(
+                "import",
+                "Datos base",
+                "Sube o reimporta el baseline desde la app cuando cambie la base real.",
+                "Fuentes y datos",
+                ImportView,
+            ),
+            PageDef(
                 "casafari",
-                "Revision Casafari",
-                "Audita matching, revisa links y corrige identidades cuando la automatizacion no llegue sola.",
-                "Fuentes",
+                "Casafari",
+                "Revisión del matching y de los casos que todavía no quedan claros.",
+                "Fuentes y datos",
                 CasafariLinksView,
             ),
             PageDef(
                 "assets",
-                "Inventario de activos",
-                "Consulta el activo consolidado y su rastro de mercado desde el baseline hasta Casafari.",
-                "Analisis",
+                "Activos",
+                "Consulta de activos consolidados y su rastro de mercado.",
+                "Explorar",
                 AssetsView,
             ),
             PageDef(
                 "zones",
-                "Zonas oficiales",
-                "Explora la capa barrio y distrito como base de comparacion estable para todo lo demas.",
-                "Analisis",
+                "Barrios y distritos",
+                "Lectura estable de zonas oficiales para comparar resultados.",
+                "Explorar",
                 ZonesView,
             ),
             PageDef(
                 "sync",
-                "Estado de sincronizacion",
-                "Supervisa el pulso de las fuentes y controla la salud del ingest y del delta de mercado.",
+                "Sincronización",
+                "Control de salud del scraping, login y cobertura del último delta.",
                 "Sistema",
                 SyncView,
             ),
@@ -162,8 +162,8 @@ class MainWindow(QMainWindow):
         content = QWidget()
         content.setObjectName("ContentArea")
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(22, 18, 22, 18)
-        content_layout.setSpacing(16)
+        content_layout.setContentsMargins(20, 18, 20, 18)
+        content_layout.setSpacing(14)
 
         top_shell = self._build_top_shell()
         content_layout.addWidget(top_shell)
@@ -176,50 +176,49 @@ class MainWindow(QMainWindow):
         shell_layout.addWidget(content, 1)
 
         self._wire_cross_navigation()
-
         self._activate_page(0)
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(294)
+        sidebar.setFixedWidth(248)
 
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(20, 20, 20, 18)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 20, 18, 18)
+        layout.setSpacing(8)
 
-        eyebrow = QLabel("Sistema operativo inmobiliario")
+        eyebrow = QLabel("Nexus Madrid")
         eyebrow.setObjectName("BrandEyebrow")
         layout.addWidget(eyebrow)
 
-        title = QLabel("Nexus Madrid")
+        title = QLabel("Consola operativa")
         title.setObjectName("BrandTitle")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Baseline vivo, delta de mercado y lectura territorial en una sola consola."
+            "Menos pantallas mentales: resume, filtra, decide y baja al mapa cuando haga falta."
         )
         subtitle.setObjectName("BrandSubtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        source_card = QFrame()
-        source_card.setObjectName("SidebarCard")
-        source_layout = QVBoxLayout(source_card)
-        source_layout.setContentsMargins(16, 16, 16, 16)
-        source_layout.setSpacing(6)
+        status_card = QFrame()
+        status_card.setObjectName("SidebarCard")
+        status_layout = QVBoxLayout(status_card)
+        status_layout.setContentsMargins(14, 14, 14, 14)
+        status_layout.setSpacing(6)
 
-        source_badge = QLabel("Fuentes vivas")
-        source_badge.setObjectName("TopBadge")
-        source_layout.addWidget(source_badge, 0, Qt.AlignmentFlag.AlignLeft)
+        status_badge = QLabel("Principio UX")
+        status_badge.setObjectName("TopBadge")
+        status_layout.addWidget(status_badge, 0, Qt.AlignmentFlag.AlignLeft)
 
-        source_text = QLabel(
-            "El baseline se puede reimportar tantas veces como haga falta. Casafari y el resto del sistema deben seguir actualizandose encima."
+        status_text = QLabel(
+            "Primero se entiende qué pasa. Después se abre detalle. Lo avanzado no se mezcla con lo básico."
         )
-        source_text.setObjectName("SidebarFooter")
-        source_text.setWordWrap(True)
-        source_layout.addWidget(source_text)
-        layout.addWidget(source_card)
+        status_text.setObjectName("SidebarFooter")
+        status_text.setWordWrap(True)
+        status_layout.addWidget(status_text)
+        layout.addWidget(status_card)
 
         button_group = QButtonGroup(self)
         button_group.setExclusive(True)
@@ -243,7 +242,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         footer = QLabel(
-            "Preparado para el siguiente salto: mapas y trabajo territorial mas visual."
+            "La interfaz debe explicar el sistema sin obligarte a conocer su modelo interno."
         )
         footer.setObjectName("SidebarFooter")
         footer.setWordWrap(True)
@@ -256,33 +255,33 @@ class MainWindow(QMainWindow):
         shell.setObjectName("ShellHero")
 
         layout = QVBoxLayout(shell)
-        layout.setContentsMargins(22, 20, 22, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
 
         header = QHBoxLayout()
-        header.setSpacing(14)
+        header.setSpacing(12)
 
         title_box = QVBoxLayout()
-        title_box.setSpacing(4)
+        title_box.setSpacing(2)
 
-        self.shell_title = QLabel("Nexus Madrid")
+        self.shell_title = QLabel("Resumen")
         self.shell_title.setObjectName("ShellTitle")
         title_box.addWidget(self.shell_title)
 
-        self.shell_subtitle = QLabel("Sin seccion")
+        self.shell_subtitle = QLabel("")
         self.shell_subtitle.setObjectName("ShellSubtitle")
         self.shell_subtitle.setWordWrap(True)
         title_box.addWidget(self.shell_subtitle)
         header.addLayout(title_box, 1)
 
-        self.shell_badge = QLabel("Baseline vivo")
+        self.shell_badge = QLabel("Trabajo diario")
         self.shell_badge.setObjectName("TopBadge")
         header.addWidget(self.shell_badge, 0, Qt.AlignmentFlag.AlignTop)
 
-        self.refresh_shell_button = QPushButton("Actualizar shell")
+        self.refresh_shell_button = QPushButton("Actualizar")
+        self.refresh_shell_button.setObjectName("GhostButton")
         self.refresh_shell_button.clicked.connect(self.refresh_shell_metrics)
         header.addWidget(self.refresh_shell_button, 0, Qt.AlignmentFlag.AlignTop)
-
         layout.addLayout(header)
 
         self.shell_hint = QLabel("")
@@ -292,14 +291,14 @@ class MainWindow(QMainWindow):
 
         metrics_row = QHBoxLayout()
         metrics_row.setSpacing(12)
-        self.metric_assets = ShellMetricCard("Activos")
-        self.metric_matching = ShellMetricCard("Matching")
-        self.metric_geo = ShellMetricCard("Geo")
-        self.metric_sync = ShellMetricCard("Ultimo sync")
+        self.metric_base = ShellMetricCard("Base")
+        self.metric_market = ShellMetricCard("Casafari")
+        self.metric_coverage = ShellMetricCard("Cobertura")
+        self.metric_sync = ShellMetricCard("Estado")
 
-        metrics_row.addWidget(self.metric_assets, 1)
-        metrics_row.addWidget(self.metric_matching, 1)
-        metrics_row.addWidget(self.metric_geo, 1)
+        metrics_row.addWidget(self.metric_base, 1)
+        metrics_row.addWidget(self.metric_market, 1)
+        metrics_row.addWidget(self.metric_coverage, 1)
         metrics_row.addWidget(self.metric_sync, 1)
         layout.addLayout(metrics_row)
 
@@ -347,8 +346,9 @@ class MainWindow(QMainWindow):
         page = self.page_defs[index]
         self.shell_title.setText(page.title)
         self.shell_subtitle.setText(page.subtitle)
+        self.shell_badge.setText(page.nav_group)
         self.shell_hint.setText(
-            f"Seccion activa: {page.nav_group}. Menos ruido, mas lectura util y lista para evolucionar con nuevos datos."
+            "Empieza por la lectura corta. Usa filtros para centrarte y abre detalle solo cuando ya sabes qué estás buscando."
         )
 
         for idx, button in enumerate(self.nav_buttons):
@@ -361,32 +361,33 @@ class MainWindow(QMainWindow):
             with SessionLocal() as session:
                 stats = get_dashboard_stats(session)
         except Exception as exc:
-            self.metric_assets.set_content("-", "Sin lectura de base")
-            self.metric_matching.set_content("-", "Sin lectura de matching")
-            self.metric_geo.set_content("-", "Sin lectura geo")
+            self.metric_base.set_content("-", "Sin lectura de base")
+            self.metric_market.set_content("-", "Sin lectura de mercado")
+            self.metric_coverage.set_content("-", "Sin lectura geográfica")
             self.metric_sync.set_content("error", str(exc))
             return
 
         assets_total = int(stats.get("assets") or 0)
-        raw_total = int(stats.get("casafari_raw") or 0)
         coords_total = int(stats.get("assets_with_geo_point") or 0)
-        predictive_total = int(stats.get("predictive_zones_count") or 0)
-        resolved_ratio = float(stats.get("casafari_resolved_ratio") or 0.0)
-        sync_status = stats.get("last_sync_status") or "unknown"
+        raw_total = int(stats.get("casafari_raw") or 0)
+        resolved_total = int(stats.get("casafari_resolved") or 0)
+        sync_status = str(stats.get("last_sync_status") or "sin dato")
+        coords_pct = f"{(coords_total / assets_total * 100):.1f}%" if assets_total else "0.0%"
+        matching_pct = f"{(resolved_total / raw_total * 100):.1f}%" if raw_total else "0.0%"
 
-        self.metric_assets.set_content(
+        self.metric_base.set_content(
             str(assets_total),
-            f"{stats.get('buildings', 0)} edificios | {stats.get('listings', 0)} listings",
+            f"{stats.get('buildings', 0)} edificios y {stats.get('listings', 0)} listings",
         )
-        self.metric_matching.set_content(
-            f"{resolved_ratio * 100:.1f}%",
-            f"{stats.get('casafari_resolved', 0)}/{raw_total} raws | unresolved {stats.get('casafari_unresolved', 0)}",
+        self.metric_market.set_content(
+            matching_pct,
+            f"{resolved_total} casos claros de {raw_total} raws",
         )
-        self.metric_geo.set_content(
-            f"{(coords_total / assets_total * 100):.1f}%" if assets_total else "0.0%",
-            f"coords {coords_total}/{assets_total} | prediccion {predictive_total} zonas",
+        self.metric_coverage.set_content(
+            coords_pct,
+            f"{coords_total} activos con coordenadas",
         )
         self.metric_sync.set_content(
-            str(sync_status),
-            f"items {stats.get('last_sync_item_count', 0)} | raw 7d {stats.get('casafari_raw_7d', 0)}",
+            sync_status,
+            f"{stats.get('last_sync_item_count', 0)} items en el último sync",
         )

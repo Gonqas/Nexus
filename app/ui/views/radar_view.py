@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -6,8 +8,10 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -19,34 +23,32 @@ from db.session import SessionLocal
 
 
 def safe_text(value) -> str:
-    if value is None:
+    if value is None or value == "":
         return "-"
     return str(value)
 
 
 class StatCard(QGroupBox):
-    def __init__(self, title: str, value: str, detail: str = "") -> None:
+    def __init__(self, title: str) -> None:
         super().__init__(title)
-        self.setMinimumHeight(108)
+        self.setMinimumHeight(102)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(4)
 
-        self.value_label = QLabel(value)
-        self.value_label.setStyleSheet("font-size: 28px; font-weight: bold;")
+        self.value_label = QLabel("0")
+        self.value_label.setObjectName("MetricValue")
         layout.addWidget(self.value_label)
 
-        self.detail_label = QLabel(detail)
-        self.detail_label.setStyleSheet("color: #666;")
+        self.detail_label = QLabel("")
+        self.detail_label.setObjectName("MetricDetail")
         self.detail_label.setWordWrap(True)
         layout.addWidget(self.detail_label)
         layout.addStretch()
 
-    def set_value(self, value: str) -> None:
+    def set_content(self, value: str, detail: str) -> None:
         self.value_label.setText(value)
-
-    def set_detail(self, detail: str) -> None:
         self.detail_label.setText(detail)
 
 
@@ -56,17 +58,18 @@ class RadarTable(QGroupBox):
     def __init__(self, title: str, metric_label: str) -> None:
         super().__init__(title)
         self.rows: list[dict] = []
+        self.metric_label = metric_label
 
         layout = QVBoxLayout(self)
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(
-            ["Zona", metric_label, "Confianza", "Accion", "Explicacion"]
+            ["Zona", metric_label, "Confianza", "Acción", "Explicación"]
         )
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
         self.table.setCornerButtonEnabled(False)
-        self.table.setMinimumHeight(220)
+        self.table.setMinimumHeight(320)
         self.table.itemSelectionChanged.connect(self._emit_selection)
         layout.addWidget(self.table)
 
@@ -80,13 +83,12 @@ class RadarTable(QGroupBox):
                 confidence_value = row.get("microzone_confidence_score")
 
             values = [
-                safe_text(row["zone_label"]),
+                safe_text(row.get("zone_label")),
                 safe_text(row.get(metric_key)),
                 safe_text(confidence_value),
                 safe_text(row.get("recommended_action")),
                 safe_text(row.get("radar_explanation")),
             ]
-
             for col_idx, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 if col_idx in (1, 2):
@@ -127,45 +129,55 @@ class RadarView(QWidget):
         layout.setContentsMargins(10, 8, 10, 20)
         layout.setSpacing(16)
 
-        header = QHBoxLayout()
-        title_box = QVBoxLayout()
+        title = QLabel("Zonas")
+        title.setObjectName("PageTitle")
+        layout.addWidget(title)
 
-        self.title = QLabel("Radar")
-        self.title.setStyleSheet("font-size: 22px; font-weight: bold;")
-        title_box.addWidget(self.title)
-
-        self.subtitle = QLabel(
-            "Lectura territorial compacta para captar rapido: actividad, presion, transformacion, prediccion y microzonas."
+        subtitle = QLabel(
+            "El radar ya no enseña todo a la vez. Elige un foco y compara solo las zonas relevantes para esa lectura."
         )
-        self.subtitle.setStyleSheet("color: #666;")
-        self.subtitle.setWordWrap(True)
-        title_box.addWidget(self.subtitle)
+        subtitle.setObjectName("PageSubtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
 
-        controls = QHBoxLayout()
+        filters_box = QGroupBox("Filtros")
+        filters_layout = QHBoxLayout(filters_box)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Buscar barrio o distrito")
+        self.search_input.textChanged.connect(self.load_data)
+
         self.window_combo = QComboBox()
         self.window_combo.addItems(["7", "14", "30"])
         self.window_combo.setCurrentText("14")
         self.window_combo.currentTextChanged.connect(self.load_data)
 
-        self.refresh_button = QPushButton("Refrescar")
-        self.refresh_button.clicked.connect(self.load_data)
+        self.limit_combo = QComboBox()
+        self.limit_combo.addItems(["5", "10", "20"])
+        self.limit_combo.setCurrentText("10")
+        self.limit_combo.currentTextChanged.connect(self.load_data)
 
-        self.open_map_button = QPushButton("Abrir seleccion en mapa")
+        self.open_map_button = QPushButton("Abrir selección en mapa")
+        self.open_map_button.setObjectName("GhostButton")
         self.open_map_button.setEnabled(False)
         self.open_map_button.clicked.connect(self.open_selected_in_map)
 
-        controls.addWidget(QLabel("Ventana:"))
-        controls.addWidget(self.window_combo)
-        controls.addWidget(self.refresh_button)
-        controls.addWidget(self.open_map_button)
+        self.refresh_button = QPushButton("Actualizar")
+        self.refresh_button.setObjectName("GhostButton")
+        self.refresh_button.clicked.connect(self.load_data)
 
-        header.addLayout(title_box)
-        header.addStretch()
-        header.addLayout(controls)
-        layout.addLayout(header)
+        filters_layout.addWidget(QLabel("Buscar"))
+        filters_layout.addWidget(self.search_input, 1)
+        filters_layout.addWidget(QLabel("Ventana"))
+        filters_layout.addWidget(self.window_combo)
+        filters_layout.addWidget(QLabel("Top"))
+        filters_layout.addWidget(self.limit_combo)
+        filters_layout.addWidget(self.open_map_button)
+        filters_layout.addWidget(self.refresh_button)
+        layout.addWidget(filters_box)
 
         self.summary_label = QLabel("Sin datos")
-        self.summary_label.setStyleSheet("color: #666;")
+        self.summary_label.setObjectName("HeroSummary")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
 
@@ -173,69 +185,58 @@ class RadarView(QWidget):
         summary_grid.setHorizontalSpacing(12)
         summary_grid.setVerticalSpacing(12)
 
-        self.zones_total_card = StatCard("Zonas", "0")
-        self.capture_ready_card = StatCard("Capture ready", "0")
-        self.high_conf_card = StatCard("Alta confianza", "0")
-        self.low_conf_card = StatCard("Baja confianza", "0")
-        self.hot_zones_card = StatCard("Zonas calientes", "0")
-        self.relative_hot_card = StatCard("Hotspots relativos", "0")
-        self.transform_card = StatCard("Zonas transformacion", "0")
-        self.predictive_card = StatCard("Prediccion 30d", "0")
-        self.microzones_card = StatCard("Microzonas", "0")
-        self.microzone_hotspots_card = StatCard("Microhotspots", "0")
+        self.zones_total_card = StatCard("Zonas leídas")
+        self.capture_card = StatCard("Oportunidad")
+        self.heat_card = StatCard("Actividad")
+        self.confidence_card = StatCard("Confianza")
 
-        cards = [
-            self.zones_total_card,
-            self.capture_ready_card,
-            self.high_conf_card,
-            self.low_conf_card,
-            self.hot_zones_card,
-            self.relative_hot_card,
-            self.transform_card,
-            self.predictive_card,
-            self.microzones_card,
-            self.microzone_hotspots_card,
-        ]
-        for idx, card in enumerate(cards):
-            summary_grid.addWidget(card, idx // 3, idx % 3)
+        for idx, card in enumerate(
+            [self.zones_total_card, self.capture_card, self.heat_card, self.confidence_card]
+        ):
+            summary_grid.addWidget(card, 0, idx)
         layout.addLayout(summary_grid)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(12)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
 
-        self.capture_table = RadarTable("Top captacion", "Capture")
-        self.heat_table = RadarTable("Top calor", "Heat")
-        self.pressure_table = RadarTable("Top presion", "Pressure")
-        self.transformation_table = RadarTable("Top transformacion", "Transform")
-        self.liquidity_table = RadarTable("Top liquidez", "Liquidity")
-        self.predictive_table = RadarTable("Top prediccion 30d", "Pred 30d")
-        self.low_conf_table = RadarTable("Baja confianza", "Confidence")
-        self.microzones_table = RadarTable("Top microzonas", "Micro capture")
+        self.capture_table = RadarTable("Mejor captación", "Capture")
+        self.heat_table = RadarTable("Más actividad", "Heat")
+        self.transformation_table = RadarTable("Más transformación", "Transform")
+        self.microzones_table = RadarTable("Microzonas", "Micro capture")
+        self.low_conf_table = RadarTable("Confianza baja", "Confidence")
+
+        self.tabs.addTab(self.capture_table, "Captación")
+        self.tabs.addTab(self.heat_table, "Actividad")
+        self.tabs.addTab(self.transformation_table, "Transformación")
+        self.tabs.addTab(self.microzones_table, "Microzonas")
+        self.tabs.addTab(self.low_conf_table, "Confianza")
 
         for table in (
             self.capture_table,
             self.heat_table,
-            self.pressure_table,
             self.transformation_table,
-            self.liquidity_table,
-            self.predictive_table,
-            self.low_conf_table,
             self.microzones_table,
+            self.low_conf_table,
         ):
             table.row_selected.connect(self.on_table_row_selected)
 
-        grid.addWidget(self.capture_table, 0, 0)
-        grid.addWidget(self.heat_table, 0, 1)
-        grid.addWidget(self.pressure_table, 1, 0)
-        grid.addWidget(self.transformation_table, 1, 1)
-        grid.addWidget(self.liquidity_table, 2, 0)
-        grid.addWidget(self.predictive_table, 2, 1)
-        grid.addWidget(self.low_conf_table, 3, 0)
-        grid.addWidget(self.microzones_table, 3, 1)
-        layout.addLayout(grid)
-
         self.load_data()
+
+    def _limit(self) -> int:
+        return int(self.limit_combo.currentText())
+
+    def _filter_rows(self, rows: list[dict]) -> list[dict]:
+        query = (self.search_input.text() or "").strip().lower()
+        if not query:
+            return rows[: self._limit()]
+
+        filtered = [
+            row
+            for row in rows
+            if query in str(row.get("zone_label") or "").lower()
+            or query in str(row.get("parent_zone_label") or "").lower()
+        ]
+        return filtered[: self._limit()]
 
     def on_table_row_selected(self, row: dict) -> None:
         self.selected_row_payload = row
@@ -246,9 +247,7 @@ class RadarView(QWidget):
         if not row:
             return
 
-        payload = {
-            "window_days": int(self.window_combo.currentText()),
-        }
+        payload = {"window_days": int(self.window_combo.currentText())}
         if row.get("microzone_label"):
             payload["microzone_label"] = row.get("microzone_label")
             payload["zone_label"] = row.get("parent_zone_label") or row.get("zone_label")
@@ -265,44 +264,46 @@ class RadarView(QWidget):
 
         summary = payload["summary"]
         self.summary_label.setText(
-            f"{summary['zones_total']} zonas leidas en {payload['window_days']} dias. "
-            f"Capture ready: {summary['capture_ready_zones']}. "
-            f"Hotspots relativos: {summary.get('relative_hot_zones', 0)}. "
-            f"Transformacion: {summary.get('transform_zones', 0)}. "
-            f"Prediccion 30d: {summary.get('predictive_zones', 0)}. "
-            f"Microzonas activas: {summary.get('microzones_total', 0)}."
+            f"Ventana {payload['window_days']}d. "
+            f"Hay {summary['zones_total']} zonas leídas, "
+            f"{summary['capture_ready_zones']} listas para captación y "
+            f"{summary['low_confidence_zones']} con confianza baja."
         )
 
-        self.zones_total_card.set_value(str(summary["zones_total"]))
-        self.zones_total_card.set_detail(f"ventana {payload['window_days']}d")
-        self.capture_ready_card.set_value(str(summary["capture_ready_zones"]))
-        self.capture_ready_card.set_detail("captacion lista")
-        self.high_conf_card.set_value(str(summary["high_confidence_zones"]))
-        self.high_conf_card.set_detail("confidence >= 60")
-        self.low_conf_card.set_value(str(summary["low_confidence_zones"]))
-        self.low_conf_card.set_detail("confidence < 40")
-        self.hot_zones_card.set_value(str(summary["hot_zones"]))
-        self.hot_zones_card.set_detail("heat >= 65")
-        self.relative_hot_card.set_value(str(summary.get("relative_hot_zones", 0)))
-        self.relative_hot_card.set_detail("actividad relativa")
-        self.transform_card.set_value(str(summary.get("transform_zones", 0)))
-        self.transform_card.set_detail("senal transformadora")
-        self.predictive_card.set_value(str(summary.get("predictive_zones", 0)))
-        self.predictive_card.set_detail("mejor lectura 30d")
-        self.microzones_card.set_value(str(summary.get("microzones_total", 0)))
-        self.microzones_card.set_detail("celdas con geo")
-        self.microzone_hotspots_card.set_value(str(summary.get("microzone_hotspots", 0)))
-        self.microzone_hotspots_card.set_detail("microzonas fuertes")
+        self.zones_total_card.set_content(
+            str(summary["zones_total"]),
+            "barrios o distritos con lectura disponible",
+        )
+        self.capture_card.set_content(
+            str(summary["capture_ready_zones"]),
+            "zonas que hoy parecen más accionables",
+        )
+        self.heat_card.set_content(
+            str(summary["hot_zones"]),
+            "zonas con actividad fuerte",
+        )
+        self.confidence_card.set_content(
+            str(summary["low_confidence_zones"]),
+            "zonas donde todavía falta confianza o dato",
+        )
 
-        self.capture_table.load_rows(payload["top_capture"], "zone_capture_score")
-        self.heat_table.load_rows(payload["top_heat"], "zone_heat_score")
-        self.pressure_table.load_rows(payload["top_pressure"], "zone_pressure_score")
+        self.capture_table.load_rows(
+            self._filter_rows(payload["top_capture"]),
+            "zone_capture_score",
+        )
+        self.heat_table.load_rows(
+            self._filter_rows(payload["top_heat"]),
+            "zone_heat_score",
+        )
         self.transformation_table.load_rows(
-            payload["top_transformation"], "zone_transformation_signal_score"
+            self._filter_rows(payload["top_transformation"]),
+            "zone_transformation_signal_score",
         )
-        self.liquidity_table.load_rows(payload["top_liquidity"], "zone_liquidity_score")
-        self.predictive_table.load_rows(
-            payload["top_predictive"], "predicted_absorption_30d_score"
+        self.microzones_table.load_rows(
+            self._filter_rows(payload["top_microzones"]),
+            "microzone_capture_score",
         )
-        self.low_conf_table.load_rows(payload["low_confidence"], "zone_confidence_score")
-        self.microzones_table.load_rows(payload["top_microzones"], "microzone_capture_score")
+        self.low_conf_table.load_rows(
+            self._filter_rows(payload["low_confidence"]),
+            "zone_confidence_score",
+        )
