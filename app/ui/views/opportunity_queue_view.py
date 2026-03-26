@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -189,8 +190,8 @@ class OpportunityQueueView(QWidget):
         left_splitter.addWidget(self.table)
         left_splitter.setSizes([240, 700])
 
-        detail_widget = QWidget()
-        detail_layout = QVBoxLayout(detail_widget)
+        detail_container = QWidget()
+        detail_layout = QVBoxLayout(detail_container)
 
         self.detail_title = QLabel("Detalle")
         self.detail_title.setStyleSheet("font-size: 20px; font-weight: bold;")
@@ -205,6 +206,7 @@ class OpportunityQueueView(QWidget):
         self.lbl_breakdown = QLabel("-")
         self.lbl_breakdown.setWordWrap(True)
         self.lbl_zone = QLabel("-")
+        self.lbl_zone.setWordWrap(True)
         self.lbl_zone_capture = QLabel("-")
         self.lbl_zone_relative_heat = QLabel("-")
         self.lbl_zone_transform = QLabel("-")
@@ -221,8 +223,11 @@ class OpportunityQueueView(QWidget):
         self.lbl_asset = QLabel("-")
         self.lbl_asset.setWordWrap(True)
         self.lbl_geo = QLabel("-")
+        self.lbl_geo.setWordWrap(True)
         self.lbl_price = QLabel("-")
+        self.lbl_price.setWordWrap(True)
         self.lbl_contact = QLabel("-")
+        self.lbl_contact.setWordWrap(True)
 
         summary_form.addRow("Score", self.lbl_score)
         summary_form.addRow("Prioridad", self.lbl_priority)
@@ -257,8 +262,13 @@ class OpportunityQueueView(QWidget):
         self.comps_table.verticalHeader().setVisible(False)
         comps_layout.addWidget(self.comps_table)
         detail_layout.addWidget(self.comps_group)
+        detail_layout.addStretch()
 
-        main_splitter.addWidget(detail_widget)
+        detail_scroll = QScrollArea()
+        detail_scroll.setWidgetResizable(True)
+        detail_scroll.setWidget(detail_container)
+
+        main_splitter.addWidget(detail_scroll)
         main_splitter.setSizes([1100, 650])
 
         self.load_data()
@@ -315,8 +325,8 @@ class OpportunityQueueView(QWidget):
 
         self._render_rows()
         self.summary_label.setText(
-            f"Eventos en ventana={len(self.all_rows)} | tras filtros={len(self.filtered_rows)} | "
-            f"visibles={len(self.visible_rows)} | grupos={len(self.group_rows)}"
+            f"{len(self.visible_rows)} oportunidades visibles de {len(self.all_rows)} en la ventana actual. "
+            f"Filtros activos: {len(self.filtered_rows)} | grupos: {len(self.group_rows)}"
         )
 
     def _render_groups(self) -> None:
@@ -394,8 +404,7 @@ class OpportunityQueueView(QWidget):
         )
         self._render_rows()
         self.summary_label.setText(
-            f"Eventos en ventana={len(self.all_rows)} | tras filtros={len(self.filtered_rows)} | "
-            f"grupo seleccionado={len(self.visible_rows)}"
+            f"Grupo seleccionado: {len(self.visible_rows)} oportunidades visibles sobre {len(self.filtered_rows)} filtradas."
         )
 
     def on_selected(self) -> None:

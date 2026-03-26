@@ -147,8 +147,9 @@ def get_dashboard_stats(session: Session) -> dict[str, int | float | str | list[
     low_confidence_zones = sorted(
         [row for row in zone_rows if row.get("zone_confidence_score", 0) < 40],
         key=lambda row: (
-            row.get("zone_confidence_score", 0),
+            0 if (row.get("zone_label") or "") == "Sin zona" else 1,
             -(row.get("casafari_raw_in_zone", 0) or 0),
+            row.get("zone_confidence_score", 0),
         ),
     )
 

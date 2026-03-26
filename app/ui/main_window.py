@@ -140,6 +140,7 @@ class MainWindow(QMainWindow):
         self.nav_buttons: list[QPushButton] = []
 
         shell = QWidget()
+        shell.setObjectName("AppRoot")
         self.setCentralWidget(shell)
 
         shell_layout = QHBoxLayout(shell)
@@ -150,6 +151,7 @@ class MainWindow(QMainWindow):
         shell_layout.addWidget(sidebar)
 
         content = QWidget()
+        content.setObjectName("ContentArea")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(22, 18, 22, 18)
         content_layout.setSpacing(16)
@@ -230,7 +232,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         footer = QLabel(
-            "Preparado para el siguiente salto: mapas, comparables espaciales y flujos de trabajo de captacion."
+            "Preparado para el siguiente salto: mapas y trabajo territorial mas visual."
         )
         footer.setObjectName("SidebarFooter")
         footer.setWordWrap(True)
@@ -298,7 +300,7 @@ class MainWindow(QMainWindow):
         self.shell_title.setText(page.title)
         self.shell_subtitle.setText(page.subtitle)
         self.shell_hint.setText(
-            f"Seccion activa: {page.nav_group}. La UI ya esta preparada para trabajar sobre una base viva que puede cambiar con nuevas importaciones."
+            f"Seccion activa: {page.nav_group}. Menos ruido, mas lectura util y lista para evolucionar con nuevos datos."
         )
 
         for idx, button in enumerate(self.nav_buttons):

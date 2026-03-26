@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import orjson
+
 from core.normalization.text import normalize_text
 
 
@@ -83,6 +87,11 @@ PRETTY_REPLACEMENTS: dict[str, str] = {
 }
 
 
+BASE_DIR = Path(__file__).resolve().parents[2]
+ZONE_CONTEXT_PATH = BASE_DIR / "data" / "processed" / "madrid_zone_external_context.json"
+_KNOWN_ZONE_LABELS_CACHE: set[str] | None = None
+
+
 def _base_clean(value: str | None) -> str | None:
     text = normalize_text(value)
     if not text:
@@ -91,6 +100,39 @@ def _base_clean(value: str | None) -> str | None:
     text = text.strip(" ,-/")
     text = " ".join(text.split())
     return text or None
+
+
+def _load_known_zone_labels() -> set[str]:
+    global _KNOWN_ZONE_LABELS_CACHE
+
+    if _KNOWN_ZONE_LABELS_CACHE is not None:
+        return _KNOWN_ZONE_LABELS_CACHE
+
+    labels = set(ZONE_LABEL_ALIASES.values()) | set(PRETTY_REPLACEMENTS.values())
+
+    if ZONE_CONTEXT_PATH.exists():
+        try:
+            payload = orjson.loads(ZONE_CONTEXT_PATH.read_bytes())
+            for bucket_name in ("districts", "neighborhoods"):
+                bucket = payload.get(bucket_name) or {}
+                for item in bucket.values():
+                    zone_label = item.get("zone_label")
+                    if zone_label:
+                        labels.add(str(zone_label))
+        except Exception:
+            pass
+
+    _KNOWN_ZONE_LABELS_CACHE = labels
+    return labels
+
+
+def is_official_zone_label(value: str | None) -> bool:
+    text = _base_clean(value)
+    if not text:
+        return False
+
+    candidate = PRETTY_REPLACEMENTS.get(text.title() if text.upper() == text else text, text)
+    return candidate in _load_known_zone_labels()
 
 
 def canonical_zone_label(value: str | None) -> str | None:
@@ -110,4 +152,7 @@ def canonical_zone_label(value: str | None) -> str | None:
     if text.upper() == text:
         text = text.title()
 
-    return PRETTY_REPLACEMENTS.get(text, text)
+    candidate = PRETTY_REPLACEMENTS.get(text, text)
+    if candidate in _load_known_zone_labels():
+        return candidate
+    return None
