@@ -443,6 +443,8 @@ def get_opportunity_queue_v2(
             "asset_address": asset.address_raw if asset else None,
             "asset_neighborhood": asset.neighborhood if asset else None,
             "asset_district": asset.district if asset else None,
+            "asset_lat": float(asset.lat) if asset and asset.lat is not None else None,
+            "asset_lon": float(asset.lon) if asset and asset.lon is not None else None,
             "has_geo_point": bool(asset and asset.lat is not None and asset.lon is not None),
             "listing_id": listing.id if listing else None,
             "portal": listing.source_portal if listing else None,

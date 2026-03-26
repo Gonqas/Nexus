@@ -19,6 +19,7 @@ from app.ui.views.assets_view import AssetsView
 from app.ui.views.casafari_links_view import CasafariLinksView
 from app.ui.views.dashboard_view import DashboardView
 from app.ui.views.import_view import ImportView
+from app.ui.views.map_view import MapView
 from app.ui.views.opportunity_queue_view import OpportunityQueueView
 from app.ui.views.radar_view import RadarView
 from app.ui.views.search_view import SearchView
@@ -91,6 +92,13 @@ class MainWindow(QMainWindow):
                 "Lectura de calor, transformacion, microzonas y prediccion 30d lista para exploracion tactica.",
                 "Operacion",
                 RadarView,
+            ),
+            PageDef(
+                "map",
+                "Mapa operativo",
+                "Explora oportunidades geolocalizadas y microzonas sobre el mapa para pasar de la lectura a la accion.",
+                "Operacion",
+                MapView,
             ),
             PageDef(
                 "import",

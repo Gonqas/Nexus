@@ -170,6 +170,8 @@ def test_opportunity_queue_filters_groups_and_breakdown(monkeypatch) -> None:
         assert "evento" in rows[0]["score_breakdown"]
         assert rows[0]["microzone_label"] == "Sol / MZ mx-my"
         assert rows[0]["score_microzone_signal"] > 0
+        assert rows[0]["asset_lat"] is not None
+        assert rows[0]["asset_lon"] is not None
         assert rows[0]["predicted_opportunity_30d_score"] >= 0
         assert rows[0]["predicted_absorption_30d_score"] >= 0
 
