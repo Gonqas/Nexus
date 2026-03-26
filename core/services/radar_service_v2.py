@@ -72,6 +72,9 @@ def _summary(rows: list[dict], window_days: int) -> dict[str, Any]:
         "hot_zones": sum(1 for row in rows if (row.get("zone_heat_score") or 0) >= 65),
         "relative_hot_zones": sum(1 for row in rows if (row.get("zone_relative_heat_score") or 0) >= 65),
         "transform_zones": sum(1 for row in rows if (row.get("zone_transformation_signal_score") or 0) >= 65),
+        "predictive_zones": sum(
+            1 for row in rows if (row.get("predicted_absorption_30d_score") or 0) >= 65
+        ),
     }
 
 
@@ -120,6 +123,17 @@ def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, A
         reverse=True,
     )[:12]
 
+    top_predictive = sorted(
+        rows,
+        key=lambda r: (
+            r.get("predicted_absorption_30d_score") or 0.0,
+            r.get("zone_liquidity_score") or 0.0,
+            r.get("zone_relative_heat_score") or 0.0,
+            r.get("zone_confidence_score") or 0.0,
+        ),
+        reverse=True,
+    )[:12]
+
     low_confidence = sorted(
         rows,
         key=lambda r: (r["zone_confidence_score"], -r["casafari_raw_in_zone"]),
@@ -150,6 +164,7 @@ def get_radar_payload_v2(session: Session, window_days: int = 14) -> dict[str, A
         "top_pressure": top_pressure,
         "top_transformation": top_transformation,
         "top_liquidity": top_liquidity,
+        "top_predictive": top_predictive,
         "low_confidence": low_confidence,
         "top_microzones": top_microzones,
     }

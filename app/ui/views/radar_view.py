@@ -130,6 +130,7 @@ class RadarView(QWidget):
         self.hot_zones_card = StatCard("Zonas calientes", "0")
         self.relative_hot_card = StatCard("Hotspots relativos", "0")
         self.transform_card = StatCard("Zonas transformacion", "0")
+        self.predictive_card = StatCard("Prediccion 30d", "0")
         self.microzones_card = StatCard("Microzonas", "0")
         self.microzone_hotspots_card = StatCard("Microhotspots", "0")
 
@@ -140,8 +141,9 @@ class RadarView(QWidget):
         summary_grid.addWidget(self.hot_zones_card, 1, 1)
         summary_grid.addWidget(self.relative_hot_card, 1, 2)
         summary_grid.addWidget(self.transform_card, 2, 0)
-        summary_grid.addWidget(self.microzones_card, 2, 1)
-        summary_grid.addWidget(self.microzone_hotspots_card, 2, 2)
+        summary_grid.addWidget(self.predictive_card, 2, 1)
+        summary_grid.addWidget(self.microzones_card, 2, 2)
+        summary_grid.addWidget(self.microzone_hotspots_card, 3, 0)
         layout.addLayout(summary_grid)
 
         grid = QGridLayout()
@@ -150,6 +152,7 @@ class RadarView(QWidget):
         self.pressure_table = RadarTable("Top presion", "Pressure")
         self.transformation_table = RadarTable("Top transformacion", "Transform")
         self.liquidity_table = RadarTable("Top liquidez", "Liquidity")
+        self.predictive_table = RadarTable("Top prediccion 30d", "Pred 30d")
         self.low_conf_table = RadarTable("Baja confianza", "Confidence")
         self.microzones_table = RadarTable("Top microzonas", "Micro capture")
 
@@ -158,8 +161,9 @@ class RadarView(QWidget):
         grid.addWidget(self.pressure_table, 1, 0)
         grid.addWidget(self.transformation_table, 1, 1)
         grid.addWidget(self.liquidity_table, 2, 0)
-        grid.addWidget(self.low_conf_table, 2, 1)
-        grid.addWidget(self.microzones_table, 3, 0, 1, 2)
+        grid.addWidget(self.predictive_table, 2, 1)
+        grid.addWidget(self.low_conf_table, 3, 0)
+        grid.addWidget(self.microzones_table, 3, 1)
 
         layout.addLayout(grid)
         self.load_data()
@@ -179,6 +183,7 @@ class RadarView(QWidget):
             f"zonas calientes={summary['hot_zones']} | "
             f"hotspots relativos={summary.get('relative_hot_zones', 0)} | "
             f"zonas transformacion={summary.get('transform_zones', 0)} | "
+            f"prediccion 30d={summary.get('predictive_zones', 0)} | "
             f"microzonas={summary.get('microzones_total', 0)} | "
             f"microhotspots={summary.get('microzone_hotspots', 0)}"
         )
@@ -197,6 +202,8 @@ class RadarView(QWidget):
         self.relative_hot_card.set_detail("relative_heat>=65")
         self.transform_card.set_value(str(summary.get("transform_zones", 0)))
         self.transform_card.set_detail("transformation>=65")
+        self.predictive_card.set_value(str(summary.get("predictive_zones", 0)))
+        self.predictive_card.set_detail("pred_absorption_30d>=65")
         self.microzones_card.set_value(str(summary.get("microzones_total", 0)))
         self.microzones_card.set_detail("celdas activas con geo")
         self.microzone_hotspots_card.set_value(str(summary.get("microzone_hotspots", 0)))
@@ -207,5 +214,6 @@ class RadarView(QWidget):
         self.pressure_table.load_rows(payload["top_pressure"], "zone_pressure_score")
         self.transformation_table.load_rows(payload["top_transformation"], "zone_transformation_signal_score")
         self.liquidity_table.load_rows(payload["top_liquidity"], "zone_liquidity_score")
+        self.predictive_table.load_rows(payload["top_predictive"], "predicted_absorption_30d_score")
         self.low_conf_table.load_rows(payload["low_confidence"], "zone_confidence_score")
         self.microzones_table.load_rows(payload["top_microzones"], "microzone_capture_score")

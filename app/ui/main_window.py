@@ -19,7 +19,7 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.tabs.addTab(DashboardView(), "Dashboard")
-        self.tabs.addTab(ImportView(), "Importar CSV")
+        self.tabs.addTab(ImportView(), "Importar baseline")
         self.tabs.addTab(SearchView(), "Buscar")
         self.tabs.addTab(CasafariLinksView(), "Casafari Links")
         self.tabs.addTab(AssetsView(), "Activos")

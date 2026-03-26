@@ -170,6 +170,8 @@ def test_opportunity_queue_filters_groups_and_breakdown(monkeypatch) -> None:
         assert "evento" in rows[0]["score_breakdown"]
         assert rows[0]["microzone_label"] == "Sol / MZ mx-my"
         assert rows[0]["score_microzone_signal"] > 0
+        assert rows[0]["predicted_opportunity_30d_score"] >= 0
+        assert rows[0]["predicted_absorption_30d_score"] >= 0
 
         filtered = filter_opportunity_rows(
             rows,
@@ -247,6 +249,12 @@ def test_opportunity_detail_includes_comparables(monkeypatch) -> None:
         assert detail["found"] is True
         assert detail["queue_row"]["event_id"] == seeded["event_1"].id
         assert detail["queue_row"]["microzone_label"] == "Sol / MZ mx-my"
+        assert detail["queue_row"]["predicted_opportunity_30d_band"] in {
+            "alta",
+            "media",
+            "moderada",
+            "baja",
+        }
         assert detail["comparables"]["summary"]["comparables_count"] >= 1
     finally:
         session.close()

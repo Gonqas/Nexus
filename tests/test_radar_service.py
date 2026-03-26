@@ -26,6 +26,7 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
                     "zone_heat_score": 71.0,
                     "zone_pressure_score": 66.0,
                     "zone_liquidity_score": 60.0,
+                    "predicted_absorption_30d_score": 74.0,
                     "zone_confidence_score": 78.0,
                     "recommended_action": "Captación agresiva",
                     "executive_summary": "Muy fuerte",
@@ -40,6 +41,7 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
                     "zone_heat_score": 45.0,
                     "zone_pressure_score": 52.0,
                     "zone_liquidity_score": 48.0,
+                    "predicted_absorption_30d_score": 58.0,
                     "zone_confidence_score": 55.0,
                     "recommended_action": "Captación selectiva",
                     "executive_summary": "Buena",
@@ -54,6 +56,7 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
                     "zone_heat_score": 30.0,
                     "zone_pressure_score": 25.0,
                     "zone_liquidity_score": 28.0,
+                    "predicted_absorption_30d_score": 24.0,
                     "zone_confidence_score": 22.0,
                     "recommended_action": "Poca señal / baja confianza",
                     "executive_summary": "Floja",
@@ -68,6 +71,7 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
                     "zone_heat_score": 999.0,
                     "zone_pressure_score": 999.0,
                     "zone_liquidity_score": 999.0,
+                    "predicted_absorption_30d_score": 82.0,
                     "zone_confidence_score": 65.0,
                     "recommended_action": "Captación agresiva",
                     "executive_summary": "Outlier",
@@ -82,6 +86,7 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
                     "zone_heat_score": 62.0,
                     "zone_pressure_score": 50.0,
                     "zone_liquidity_score": 46.0,
+                    "predicted_absorption_30d_score": 54.0,
                     "zone_confidence_score": 61.0,
                     "recommended_action": "Seguir y vigilar",
                     "executive_summary": "Activa",
@@ -96,6 +101,7 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
                     "zone_heat_score": 67.0,
                     "zone_pressure_score": 48.0,
                     "zone_liquidity_score": 44.0,
+                    "predicted_absorption_30d_score": 49.0,
                     "zone_confidence_score": 39.0,
                     "recommended_action": "Seguir y vigilar",
                     "executive_summary": "Caliente pero floja",
@@ -141,9 +147,11 @@ def test_radar_payload_exposes_window_summary_and_rank_tables(monkeypatch) -> No
         assert payload["summary"]["low_confidence_zones"] == 2
         assert payload["summary"]["capture_ready_zones"] == 3
         assert payload["summary"]["hot_zones"] == 3
+        assert payload["summary"]["predictive_zones"] == 2
         assert payload["summary"]["microzones_total"] == 2
         assert payload["summary"]["microzone_hotspots"] == 1
         assert payload["top_capture"][0]["radar_explanation"]
+        assert payload["top_predictive"][0]["predicted_absorption_30d_score"] == 82.0
         assert payload["top_microzones"][0]["microzone_capture_score"] == 74.0
         assert payload["low_confidence"][0]["zone_confidence_score"] <= payload["low_confidence"][1]["zone_confidence_score"]
     finally:

@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from core.services.predictive_signal_service import build_zone_prediction
 from core.features.zone_features_v2 import build_zone_feature_rows_v2
 from core.scoring.zone_scoring_v2 import score_zone_rows_v2
 
@@ -55,6 +56,10 @@ def build_zone_executive_summary(row: dict) -> str:
         bits.append(f"IVT {float(vulnerability):.1f}")
     if row.get("official_change_of_use_24m"):
         bits.append(f"{int(row.get('official_change_of_use_24m') or 0)} cambios de uso recientes")
+    if row.get("predicted_absorption_30d_score") is not None:
+        bits.append(
+            f"prediccion 30d {float(row.get('predicted_absorption_30d_score') or 0.0):.1f}"
+        )
 
     return ". ".join(bits).capitalize() + "." if bits else "Sin lectura ejecutiva suficiente."
 
@@ -72,6 +77,7 @@ def get_zone_intelligence_v2(session: Session, window_days: int = 14) -> list[di
     enriched = []
     for row in rows:
         row = dict(row)
+        row.update(build_zone_prediction(row))
         row["executive_summary"] = build_zone_executive_summary(row)
         enriched.append(row)
 

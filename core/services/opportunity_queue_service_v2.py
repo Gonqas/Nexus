@@ -12,6 +12,7 @@ from core.features.zone_features import infer_zone_label_for_asset
 from core.normalization.text import normalize_text_key
 from core.services.casafari_semantics_service import classify_phone_profile
 from core.services.microzone_intelligence_service import get_microzone_intelligence
+from core.services.predictive_signal_service import build_opportunity_prediction
 from core.services.zone_intelligence_service_v2 import get_zone_intelligence_v2
 from db.models.asset import Asset
 from db.models.listing import Listing
@@ -321,12 +322,29 @@ def get_opportunity_queue_v2(
             phone_profile_cache[phone_key] = classify_phone_profile(session, contact_phone)
         phone_profile = phone_profile_cache[phone_key]["phone_profile"]
 
+        price_drop_pct = None
+        if (
+            event.event_type == "price_drop"
+            and event.price_old
+            and event.price_new
+            and event.price_old > 0
+        ):
+            price_drop_pct = max((event.price_old - event.price_new) / event.price_old, 0.0)
+
         event_base = _event_base_score(event.event_type)
         recency = _recency_score(event.event_datetime)
         price_signal = _price_signal_score(event)
         zone_signal = _zone_signal_score(zone_row)
         microzone_signal = _microzone_signal_score(microzone_row)
         geo_signal = _geo_signal_score(asset)
+        prediction = build_opportunity_prediction(
+            zone_row=zone_row,
+            microzone_row=microzone_row,
+            event_type=event.event_type,
+            price_drop_pct=price_drop_pct,
+            has_geo_point=bool(asset and asset.lat is not None and asset.lon is not None),
+        )
+        predictive_signal = float(prediction["predicted_opportunity_30d_score"]) * 0.12
 
         score = (
             event_base
@@ -334,6 +352,7 @@ def get_opportunity_queue_v2(
             + price_signal
             + zone_signal
             + microzone_signal
+            + predictive_signal
             + geo_signal
         )
 
@@ -355,6 +374,7 @@ def get_opportunity_queue_v2(
             "score_price_signal": round(price_signal, 2),
             "score_zone_signal": round(zone_signal, 2),
             "score_microzone_signal": round(microzone_signal, 2),
+            "score_predictive_signal": round(predictive_signal, 2),
             "score_geo_signal": round(geo_signal, 2),
             "score_breakdown": _score_breakdown_text(
                 event_base=event_base,
@@ -363,7 +383,8 @@ def get_opportunity_queue_v2(
                 zone_signal=zone_signal,
                 microzone_signal=microzone_signal,
                 geo_signal=geo_signal,
-            ),
+            )
+            + f" + prediccion {predictive_signal:.1f}",
             "zone_label": zone_label,
             "zone_capture_score": zone_row.get("zone_capture_score") if zone_row else None,
             "zone_relative_heat_score": zone_row.get("zone_relative_heat_score")
@@ -407,6 +428,16 @@ def get_opportunity_queue_v2(
             "microzone_recommended_action": microzone_row.get("recommended_action")
             if microzone_row
             else None,
+            "predicted_opportunity_30d_score": prediction["predicted_opportunity_30d_score"],
+            "predicted_opportunity_30d_band": prediction["predicted_opportunity_30d_band"],
+            "predicted_action_window_days": prediction["predicted_action_window_days"],
+            "prediction_explanation": prediction["prediction_explanation"],
+            "predicted_absorption_30d_score": prediction["zone_prediction"][
+                "predicted_absorption_30d_score"
+            ],
+            "predicted_absorption_30d_band": prediction["zone_prediction"][
+                "predicted_absorption_30d_band"
+            ],
             "asset_id": asset.id if asset else None,
             "asset_type": _asset_type(asset),
             "asset_address": asset.address_raw if asset else None,

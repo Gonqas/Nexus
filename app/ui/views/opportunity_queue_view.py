@@ -216,6 +216,8 @@ class OpportunityQueueView(QWidget):
         self.lbl_microzone.setWordWrap(True)
         self.lbl_microzone_scores = QLabel("-")
         self.lbl_microzone_scores.setWordWrap(True)
+        self.lbl_prediction = QLabel("-")
+        self.lbl_prediction.setWordWrap(True)
         self.lbl_asset = QLabel("-")
         self.lbl_asset.setWordWrap(True)
         self.lbl_geo = QLabel("-")
@@ -235,6 +237,7 @@ class OpportunityQueueView(QWidget):
         summary_form.addRow("Contexto zona", self.lbl_zone_context)
         summary_form.addRow("Microzona", self.lbl_microzone)
         summary_form.addRow("Scores micro", self.lbl_microzone_scores)
+        summary_form.addRow("Prediccion 30d", self.lbl_prediction)
         summary_form.addRow("Activo", self.lbl_asset)
         summary_form.addRow("Geo", self.lbl_geo)
         summary_form.addRow("Precio", self.lbl_price)
@@ -449,6 +452,14 @@ class OpportunityQueueView(QWidget):
             f"concentracion: {safe_text(row.get('microzone_concentration_score'))} | "
             f"confidence: {safe_text(row.get('microzone_confidence_score'))}"
         )
+        self.lbl_prediction.setText(
+            f"oportunidad: {safe_text(row.get('predicted_opportunity_30d_score'))} "
+            f"({safe_text(row.get('predicted_opportunity_30d_band'))}) | "
+            f"zona: {safe_text(row.get('predicted_absorption_30d_score'))} "
+            f"({safe_text(row.get('predicted_absorption_30d_band'))}) | "
+            f"ventana: {safe_text(row.get('predicted_action_window_days'))}d | "
+            f"{safe_text(row.get('prediction_explanation'))}"
+        )
         self.lbl_asset.setText(
             f"{safe_text(row['asset_address'])} | {safe_text(row['asset_type'])}"
         )
@@ -498,6 +509,7 @@ class OpportunityQueueView(QWidget):
         self.lbl_zone_context.setText("-")
         self.lbl_microzone.setText("-")
         self.lbl_microzone_scores.setText("-")
+        self.lbl_prediction.setText("-")
         self.lbl_asset.setText("-")
         self.lbl_geo.setText("-")
         self.lbl_price.setText("-")
