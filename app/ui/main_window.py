@@ -145,6 +145,7 @@ class MainWindow(QMainWindow):
         ]
 
         self.page_widgets: list[QWidget] = [page.widget_cls() for page in self.page_defs]
+        self.page_index_by_key = {page.key: idx for idx, page in enumerate(self.page_defs)}
         self.nav_buttons: list[QPushButton] = []
 
         shell = QWidget()
@@ -173,6 +174,8 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.stack, 1)
 
         shell_layout.addWidget(content, 1)
+
+        self._wire_cross_navigation()
 
         self._activate_page(0)
 
@@ -301,6 +304,43 @@ class MainWindow(QMainWindow):
         layout.addLayout(metrics_row)
 
         return shell
+
+    def _wire_cross_navigation(self) -> None:
+        map_view = self._get_page_widget("map", MapView)
+        radar_view = self._get_page_widget("radar", RadarView)
+        queue_view = self._get_page_widget("queue", OpportunityQueueView)
+
+        if map_view and radar_view:
+            radar_view.open_in_map_requested.connect(self._open_map_with_context)
+
+        if map_view and queue_view:
+            queue_view.open_in_map_requested.connect(self._open_map_with_context)
+
+    def _get_page_widget(self, key: str, widget_type: type[QWidget]) -> QWidget | None:
+        index = self.page_index_by_key.get(key)
+        if index is None:
+            return None
+        widget = self.page_widgets[index]
+        if isinstance(widget, widget_type):
+            return widget
+        return None
+
+    def _open_map_with_context(self, payload: dict) -> None:
+        map_index = self.page_index_by_key.get("map")
+        if map_index is None:
+            return
+
+        self._activate_page(map_index)
+        map_view = self._get_page_widget("map", MapView)
+        if map_view is None:
+            return
+
+        map_view.focus_context(
+            zone_label=payload.get("zone_label"),
+            microzone_label=payload.get("microzone_label"),
+            event_id=payload.get("event_id"),
+            window_days=payload.get("window_days"),
+        )
 
     def _activate_page(self, index: int) -> None:
         self.stack.setCurrentIndex(index)

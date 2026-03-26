@@ -34,6 +34,18 @@ def test_get_sync_status_exposes_debug_summary(monkeypatch) -> None:
                 "target_url": "https://example.com/target",
             },
         )
+        monkeypatch.setattr(
+            casafari_sync_service,
+            "get_casafari_session_status",
+            lambda: {
+                "session_exists": True,
+                "session_ready": True,
+                "session_file": "C:/state/casafari_storage_state.json",
+                "session_saved_at": "2026-03-26T10:00:00",
+                "verified_history_url": "https://example.com/history",
+                "verified_history_saved_at": "2026-03-26T10:00:05",
+            },
+        )
 
         status = casafari_sync_service.get_sync_status(session)
 
@@ -42,5 +54,7 @@ def test_get_sync_status_exposes_debug_summary(monkeypatch) -> None:
         assert status["last_pages_seen"] == 3
         assert status["last_sync_mode"] == "fast"
         assert status["last_warning_count"] == 1
+        assert status["session_ready"] is True
+        assert status["verified_history_url"] == "https://example.com/history"
     finally:
         session.close()

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.workers.casafari_reconcile_worker import CasafariReconcileWorker
+from app.workers.casafari_session_worker import CasafariSessionWorker
 from app.workers.casafari_sync_worker import CasafariSyncWorker
 from core.services.casafari_sync_service import get_sync_status
 from db.session import SessionLocal
@@ -51,8 +52,10 @@ class SyncView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self.session_worker: CasafariSessionWorker | None = None
         self.worker: CasafariSyncWorker | None = None
         self.reconcile_worker: CasafariReconcileWorker | None = None
+        self.session_ready = False
 
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
@@ -71,7 +74,10 @@ class SyncView(QWidget):
         controls = QHBoxLayout()
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["fast", "balanced", "diagnostic"])
-        self.mode_combo.setCurrentText("fast")
+        self.mode_combo.setCurrentText("balanced")
+
+        self.session_button = QPushButton("Preparar sesion")
+        self.session_button.clicked.connect(self.start_prepare_session)
 
         self.sync_button = QPushButton("Sincronizar Casafari")
         self.sync_button.clicked.connect(self.start_sync)
@@ -87,6 +93,7 @@ class SyncView(QWidget):
 
         controls.addWidget(QLabel("Modo:"))
         controls.addWidget(self.mode_combo)
+        controls.addWidget(self.session_button)
         controls.addWidget(self.sync_button)
         controls.addWidget(self.reconcile_button)
         controls.addWidget(self.open_debug_button)
@@ -103,6 +110,7 @@ class SyncView(QWidget):
         self.coverage_card = SyncMetricCard("Cobertura")
         self.warning_card = SyncMetricCard("Warnings")
         self.mode_card = SyncMetricCard("Ultimo modo")
+        self.session_card = SyncMetricCard("Sesion")
 
         for idx, card in enumerate(
             [
@@ -112,6 +120,7 @@ class SyncView(QWidget):
                 self.coverage_card,
                 self.warning_card,
                 self.mode_card,
+                self.session_card,
             ]
         ):
             metrics.addWidget(card, idx // 3, idx % 3)
@@ -148,6 +157,12 @@ class SyncView(QWidget):
         self.lbl_last_count = QLabel("-")
         self.lbl_last_message = QLabel("-")
         self.lbl_last_message.setWordWrap(True)
+        self.lbl_session_ready = QLabel("-")
+        self.lbl_session_saved_at = QLabel("-")
+        self.lbl_verified_url = QLabel("-")
+        self.lbl_verified_url.setWordWrap(True)
+        self.lbl_session_file = QLabel("-")
+        self.lbl_session_file.setWordWrap(True)
 
         form.addRow("Ultimo estado", self.lbl_last_status)
         form.addRow("Ultimo inicio", self.lbl_last_started)
@@ -156,6 +171,10 @@ class SyncView(QWidget):
         form.addRow("Ultimo to", self.lbl_last_to)
         form.addRow("Ultimo numero items", self.lbl_last_count)
         form.addRow("Ultimo mensaje", self.lbl_last_message)
+        form.addRow("Sesion lista", self.lbl_session_ready)
+        form.addRow("Sesion guardada", self.lbl_session_saved_at)
+        form.addRow("URL verificada", self.lbl_verified_url)
+        form.addRow("Fichero sesion", self.lbl_session_file)
         layout.addWidget(self.status_group)
         layout.addStretch()
         self.tabs.addTab(page, "Estado")
@@ -253,6 +272,17 @@ class SyncView(QWidget):
             safe_text(status.get("last_sync_mode")),
             safe_text(status.get("last_debug_dir")),
         )
+        self.session_ready = bool(status.get("session_ready"))
+        self.lbl_session_ready.setText("si" if self.session_ready else "no")
+        self.lbl_session_saved_at.setText(safe_text(status.get("session_saved_at")))
+        self.lbl_verified_url.setText(safe_text(status.get("verified_history_url")))
+        self.lbl_session_file.setText(safe_text(status.get("session_file")))
+        self.session_card.set_content(
+            "lista" if self.session_ready else "pendiente",
+            safe_text(status.get("session_saved_at")),
+        )
+        self.sync_button.setEnabled(self.session_ready)
+        self.session_button.setEnabled(True)
 
     def open_latest_debug_dir(self) -> None:
         debug_dir = self.lbl_debug_dir.text().strip()
@@ -261,10 +291,34 @@ class SyncView(QWidget):
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(debug_dir))
 
+    def start_prepare_session(self) -> None:
+        if self.session_worker is not None and self.session_worker.isRunning():
+            return
+
+        self.session_button.setEnabled(False)
+        self.sync_button.setEnabled(False)
+        self.progress_bar.setRange(0, 0)
+        self.progress_label.setText("Preparando sesion Casafari...")
+        self.append_log("-> Preparando sesion Casafari")
+
+        self.session_worker = CasafariSessionWorker()
+        self.session_worker.progress_changed.connect(self.on_progress)
+        self.session_worker.finished_ok.connect(self.on_session_ready)
+        self.session_worker.failed.connect(self.on_session_failed)
+        self.session_worker.start()
+
     def start_sync(self) -> None:
         if self.worker is not None and self.worker.isRunning():
             return
+        if not self.session_ready:
+            self.progress_label.setText("Primero hay que preparar la sesion")
+            self.append_log(
+                "x No hay sesion Casafari lista. Abro ahora el flujo para prepararla."
+            )
+            self.start_prepare_session()
+            return
 
+        self.session_button.setEnabled(False)
         self.sync_button.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         self.progress_label.setText("Iniciando sincronizacion...")
@@ -299,7 +353,27 @@ class SyncView(QWidget):
             self.progress_bar.setRange(0, 0)
         self.append_log(f"* {message} ({current}/{total if total else '?'})")
 
+    def on_session_ready(self, result: dict) -> None:
+        self.session_button.setEnabled(True)
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(1)
+        self.progress_label.setText("Sesion Casafari lista")
+        self.append_log(
+            f"ok Sesion guardada | url={safe_text(result.get('verified_history_url'))}"
+        )
+        self.load_status()
+
+    def on_session_failed(self, error_text: str) -> None:
+        self.session_button.setEnabled(True)
+        self.sync_button.setEnabled(self.session_ready)
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Error preparando sesion")
+        self.append_log(f"x Error sesion: {error_text}")
+        self.load_status()
+
     def on_finished_ok(self, result: dict) -> None:
+        self.session_button.setEnabled(True)
         self.sync_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)
@@ -315,11 +389,15 @@ class SyncView(QWidget):
         self.load_status()
 
     def on_failed(self, error_text: str) -> None:
+        self.session_button.setEnabled(True)
         self.sync_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Error en sincronizacion")
         self.append_log(f"x Error sync: {error_text}")
+        lowered = (error_text or "").lower()
+        if "login" in lowered or "sesión guardada" in lowered or "sesion guardada" in lowered:
+            self.append_log("-> Reprepara la sesion desde 'Preparar sesion' y vuelve a sincronizar.")
         self.load_status()
 
     def on_reconcile_ok(self, result: dict) -> None:

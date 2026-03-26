@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -63,6 +63,8 @@ def compact_detail_lines(*parts: str) -> str:
 
 
 class OpportunityQueueView(QWidget):
+    open_in_map_requested = Signal(dict)
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -71,6 +73,8 @@ class OpportunityQueueView(QWidget):
         self.visible_rows: list[dict] = []
         self.group_rows: list[dict] = []
         self.selected_group_key: str | None = None
+        self.selected_event_id: int | None = None
+        self.selected_row_payload: dict | None = None
 
         layout = QVBoxLayout(self)
 
@@ -199,7 +203,14 @@ class OpportunityQueueView(QWidget):
 
         self.detail_title = QLabel("Detalle")
         self.detail_title.setStyleSheet("font-size: 20px; font-weight: bold;")
-        detail_layout.addWidget(self.detail_title)
+        detail_header = QHBoxLayout()
+        detail_header.addWidget(self.detail_title)
+        detail_header.addStretch()
+        self.open_map_button = QPushButton("Abrir en mapa")
+        self.open_map_button.setEnabled(False)
+        self.open_map_button.clicked.connect(self.open_selected_in_map)
+        detail_header.addWidget(self.open_map_button)
+        detail_layout.addLayout(detail_header)
 
         self.summary_group = QGroupBox("Resumen")
         summary_form = QFormLayout(self.summary_group)
@@ -434,6 +445,9 @@ class OpportunityQueueView(QWidget):
             return
 
         row = detail["queue_row"]
+        self.selected_event_id = event_id
+        self.selected_row_payload = row
+        self.open_map_button.setEnabled(True)
         comps = detail.get("comparables") or {}
         comps_summary = comps.get("summary") or {}
         comps_rows = comps.get("comparables") or []
@@ -520,6 +534,9 @@ class OpportunityQueueView(QWidget):
 
     def clear_detail(self) -> None:
         self.detail_title.setText("Detalle")
+        self.selected_event_id = None
+        self.selected_row_payload = None
+        self.open_map_button.setEnabled(False)
         self.lbl_score.setText("-")
         self.lbl_priority.setText("-")
         self.lbl_reason.setText("-")
@@ -540,3 +557,17 @@ class OpportunityQueueView(QWidget):
         self.lbl_contact.setText("-")
         self.comps_summary_label.setText("-")
         self.comps_table.setRowCount(0)
+
+    def open_selected_in_map(self) -> None:
+        row = self.selected_row_payload
+        if not row or self.selected_event_id is None:
+            return
+
+        self.open_in_map_requested.emit(
+            {
+                "event_id": self.selected_event_id,
+                "zone_label": row.get("zone_label"),
+                "microzone_label": row.get("microzone_label"),
+                "window_days": self._window_days(),
+            }
+        )

@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -51,8 +51,11 @@ class StatCard(QGroupBox):
 
 
 class RadarTable(QGroupBox):
+    row_selected = Signal(dict)
+
     def __init__(self, title: str, metric_label: str) -> None:
         super().__init__(title)
+        self.rows: list[dict] = []
 
         layout = QVBoxLayout(self)
         self.table = QTableWidget()
@@ -64,9 +67,11 @@ class RadarTable(QGroupBox):
         self.table.verticalHeader().setVisible(False)
         self.table.setCornerButtonEnabled(False)
         self.table.setMinimumHeight(220)
+        self.table.itemSelectionChanged.connect(self._emit_selection)
         layout.addWidget(self.table)
 
     def load_rows(self, rows: list[dict], metric_key: str) -> None:
+        self.rows = list(rows)
         self.table.setRowCount(len(rows))
 
         for row_idx, row in enumerate(rows):
@@ -90,10 +95,22 @@ class RadarTable(QGroupBox):
 
         self.table.resizeColumnsToContents()
 
+    def _emit_selection(self) -> None:
+        items = self.table.selectedItems()
+        if not items:
+            return
+        row_idx = items[0].row()
+        if row_idx < 0 or row_idx >= len(self.rows):
+            return
+        self.row_selected.emit(self.rows[row_idx])
+
 
 class RadarView(QWidget):
+    open_in_map_requested = Signal(dict)
+
     def __init__(self) -> None:
         super().__init__()
+        self.selected_row_payload: dict | None = None
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -133,9 +150,14 @@ class RadarView(QWidget):
         self.refresh_button = QPushButton("Refrescar")
         self.refresh_button.clicked.connect(self.load_data)
 
+        self.open_map_button = QPushButton("Abrir seleccion en mapa")
+        self.open_map_button.setEnabled(False)
+        self.open_map_button.clicked.connect(self.open_selected_in_map)
+
         controls.addWidget(QLabel("Ventana:"))
         controls.addWidget(self.window_combo)
         controls.addWidget(self.refresh_button)
+        controls.addWidget(self.open_map_button)
 
         header.addLayout(title_box)
         header.addStretch()
@@ -191,6 +213,18 @@ class RadarView(QWidget):
         self.low_conf_table = RadarTable("Baja confianza", "Confidence")
         self.microzones_table = RadarTable("Top microzonas", "Micro capture")
 
+        for table in (
+            self.capture_table,
+            self.heat_table,
+            self.pressure_table,
+            self.transformation_table,
+            self.liquidity_table,
+            self.predictive_table,
+            self.low_conf_table,
+            self.microzones_table,
+        ):
+            table.row_selected.connect(self.on_table_row_selected)
+
         grid.addWidget(self.capture_table, 0, 0)
         grid.addWidget(self.heat_table, 0, 1)
         grid.addWidget(self.pressure_table, 1, 0)
@@ -202,6 +236,26 @@ class RadarView(QWidget):
         layout.addLayout(grid)
 
         self.load_data()
+
+    def on_table_row_selected(self, row: dict) -> None:
+        self.selected_row_payload = row
+        self.open_map_button.setEnabled(True)
+
+    def open_selected_in_map(self) -> None:
+        row = self.selected_row_payload
+        if not row:
+            return
+
+        payload = {
+            "window_days": int(self.window_combo.currentText()),
+        }
+        if row.get("microzone_label"):
+            payload["microzone_label"] = row.get("microzone_label")
+            payload["zone_label"] = row.get("parent_zone_label") or row.get("zone_label")
+        else:
+            payload["zone_label"] = row.get("zone_label")
+
+        self.open_in_map_requested.emit(payload)
 
     def load_data(self) -> None:
         window_days = int(self.window_combo.currentText())

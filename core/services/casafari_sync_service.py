@@ -9,6 +9,7 @@ from core.connectors.casafari_history_connector import (
     derive_sync_range,
 )
 from core.services.casafari_debug_service import get_latest_casafari_debug_summary
+from core.services.casafari_session_service import get_casafari_session_status
 from core.services.casafari_reconciliation_service import reconcile_casafari_raw_items
 from db.models.raw_history_item import RawHistoryItem
 from db.repositories.sync_repo import get_or_create_sync_state
@@ -67,6 +68,7 @@ def upsert_raw_item(session: Session, data: dict) -> tuple[RawHistoryItem, bool]
 def get_sync_status(session: Session) -> dict:
     state = get_or_create_sync_state(session, CASAFARI_SOURCE_NAME)
     debug_summary = get_latest_casafari_debug_summary()
+    session_status = get_casafari_session_status()
 
     return {
         "source_name": state.source_name,
@@ -89,6 +91,7 @@ def get_sync_status(session: Session) -> dict:
         "last_sync_mode": debug_summary.get("sync_mode"),
         "last_final_url": debug_summary.get("final_url"),
         "last_target_url": debug_summary.get("target_url"),
+        **session_status,
     }
 
 

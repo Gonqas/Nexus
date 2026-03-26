@@ -299,6 +299,44 @@ class MapView(QWidget):
 
         self.render_payload()
 
+    def focus_context(
+        self,
+        *,
+        zone_label: str | None = None,
+        microzone_label: str | None = None,
+        event_id: int | None = None,
+        window_days: int | None = None,
+    ) -> None:
+        if window_days is not None:
+            self.window_combo.setCurrentText(str(window_days))
+
+        if zone_label:
+            self.search_input.setText(zone_label)
+            self.boundary_combo.setCurrentText("neighborhoods")
+        elif microzone_label:
+            self.search_input.setText(microzone_label)
+        elif event_id is not None:
+            self.layer_combo.setCurrentText("opportunities")
+
+        with SessionLocal() as session:
+            self.payload = get_spatial_map_payload(
+                session,
+                window_days=self._window_days(),
+                event_type_filter=self.event_combo.currentText(),
+                min_score=self._min_score(),
+                zone_query=self.search_input.text(),
+                layer_mode=self.layer_combo.currentText(),
+                boundary_level=self.boundary_combo.currentText(),
+                zone_metric_mode=self.metric_combo.currentText(),
+                heat_mode=self.heat_combo.currentText(),
+            )
+
+        self.selected_event_id = event_id
+        self.selected_microzone_label = microzone_label
+        self.selected_zone_label = zone_label
+        self.render_payload()
+        self._select_external_focus()
+
     def render_payload(self) -> None:
         payload = self.payload or {}
         summary = payload.get("summary") or {}
@@ -336,6 +374,32 @@ class MapView(QWidget):
         self._render_microzones(payload.get("top_microzones") or [])
         self._render_zones(payload.get("top_zones") or [])
         self._refresh_map()
+
+    def _select_external_focus(self) -> None:
+        if self.selected_event_id is not None:
+            rows = (self.payload or {}).get("top_opportunities") or []
+            for idx, row in enumerate(rows):
+                if row.get("event_id") == self.selected_event_id:
+                    self.opportunities_table.table.selectRow(idx)
+                    self.on_opportunity_selected()
+                    return
+
+        if self.selected_microzone_label:
+            rows = (self.payload or {}).get("top_microzones") or []
+            for idx, row in enumerate(rows):
+                if row.get("microzone_label") == self.selected_microzone_label:
+                    self.microzones_table.table.selectRow(idx)
+                    self.on_microzone_selected()
+                    return
+
+        if self.selected_zone_label:
+            rows = (self.payload or {}).get("top_zones") or []
+            target = safe_text(self.selected_zone_label)
+            for idx, row in enumerate(rows):
+                if safe_text(row.get("zone_label")) == target:
+                    self.zones_table.table.selectRow(idx)
+                    self.on_zone_selected()
+                    return
 
     def _render_opportunities(self, rows: list[dict]) -> None:
         table = self.opportunities_table.table
