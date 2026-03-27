@@ -499,6 +499,24 @@ def _extract_zone_compare_focus(query_key: str) -> str:
     return best_focus
 
 
+def _extract_zone_compare_focuses(query_key: str) -> list[str]:
+    matches: list[tuple[str, int]] = []
+    for focus, phrases in ZONE_COMPARE_FOCUS_LEXICONS.items():
+        score = _score_lexicon(query_key, phrases)
+        if score > 0:
+            matches.append((focus, score))
+    matches.sort(key=lambda item: item[1], reverse=True)
+    if not matches:
+        return ["overall"]
+    ordered: list[str] = []
+    for focus, _score in matches:
+        if focus not in ordered:
+            ordered.append(focus)
+        if len(ordered) >= 3:
+            break
+    return ordered or ["overall"]
+
+
 def _zone_focus_label(focus: str) -> str:
     return {
         "capture": "captacion",
@@ -808,6 +826,206 @@ def _build_zone_compare_payload(
     }
 
 
+def _build_zone_multi_compare_payload(
+    row_a: dict[str, Any],
+    row_b: dict[str, Any],
+    *,
+    focuses: list[str],
+) -> dict[str, Any]:
+    label_a = str(row_a.get("zone_label") or "Zona A")
+    label_b = str(row_b.get("zone_label") or "Zona B")
+    segments: list[str] = []
+    winners: list[str] = []
+
+    for focus in focuses[:3]:
+        payload = _build_zone_compare_payload(row_a, row_b, focus=focus)
+        focus_label = _zone_focus_label(focus)
+        score_a = _zone_focus_score(row_a, focus)
+        score_b = _zone_focus_score(row_b, focus)
+        winner = label_a if score_a >= score_b else label_b
+        winners.append(winner)
+        segments.append(
+            f"En {focus_label} gana {winner} ({score_a:.1f} vs {score_b:.1f})"
+        )
+
+    winner_counts = {
+        label_a: winners.count(label_a),
+        label_b: winners.count(label_b),
+    }
+    overall_winner = label_a if winner_counts[label_a] >= winner_counts[label_b] else label_b
+    focus_names = ", ".join(_zone_focus_label(focus) for focus in focuses[:3])
+    answer = (
+        f"He comparado {label_a} y {label_b} en {focus_names}. "
+        + ". ".join(segments)
+        + f". En conjunto sale mejor {overall_winner}, aunque depende del foco exacto que te importe mas."
+    )
+    return {
+        "title": f"Comparacion multi-foco: {label_a} vs {label_b}",
+        "answer": answer,
+        "next_step": f"Si quieres, ahora te bajo la comparacion de {overall_winner} al mapa o te la rehago solo en uno de esos focos.",
+        "suggestions": _build_zone_suggestions([row_a, row_b], 2),
+        "comparison_focuses": focuses[:3],
+    }
+
+
+def _build_opportunity_deep_explain_payload(
+    query_raw: str,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    label = str(row.get("asset_address") or f"Evento {row.get('event_id')}")
+    drivers: list[str] = []
+    event_base = float(row.get("score_event_base") or 0.0)
+    recency = float(row.get("score_recency") or 0.0)
+    zone_signal = float(row.get("score_zone_signal") or 0.0)
+    microzone_signal = float(row.get("score_microzone_signal") or 0.0)
+    geo_signal = float(row.get("score_geo_signal") or 0.0)
+    predictive_signal = float(row.get("score_predictive_signal") or 0.0)
+
+    if event_base > 0:
+        drivers.append(f"evento {event_base:.1f}")
+    if recency > 0:
+        drivers.append(f"recencia {recency:.1f}")
+    if zone_signal > 0:
+        drivers.append(f"zona {zone_signal:.1f}")
+    if microzone_signal > 0:
+        drivers.append(f"microzona {microzone_signal:.1f}")
+    if geo_signal > 0:
+        drivers.append(f"geo {geo_signal:.1f}")
+    if predictive_signal > 0:
+        drivers.append(f"prediccion {predictive_signal:.1f}")
+
+    zone_context = []
+    if row.get("zone_label"):
+        zone_context.append(str(row.get("zone_label")))
+    if row.get("zone_capture_score") is not None:
+        zone_context.append(f"capture {float(row.get('zone_capture_score') or 0.0):.1f}")
+    if row.get("zone_confidence_score") is not None:
+        zone_context.append(f"confianza {float(row.get('zone_confidence_score') or 0.0):.1f}")
+    if row.get("zone_relative_heat_score") is not None:
+        zone_context.append(f"heat rel {float(row.get('zone_relative_heat_score') or 0.0):.1f}")
+
+    micro_context = []
+    if row.get("microzone_label"):
+        micro_context.append(str(row.get("microzone_label")))
+    if row.get("microzone_capture_score") is not None:
+        micro_context.append(f"capture micro {float(row.get('microzone_capture_score') or 0.0):.1f}")
+    if row.get("microzone_concentration_score") is not None:
+        micro_context.append(f"concentracion {float(row.get('microzone_concentration_score') or 0.0):.1f}")
+
+    casafari_context = []
+    if row.get("event_type"):
+        casafari_context.append(str(row.get("event_type")))
+    if row.get("portal"):
+        casafari_context.append(str(row.get("portal")))
+    if row.get("reason"):
+        casafari_context.append(str(row.get("reason")))
+
+    answer_parts = [
+        f"{label} sale arriba por {', '.join(drivers[:6])}." if drivers else "",
+        f"Zona: {', '.join(zone_context)}." if zone_context else "",
+        f"Microzona: {', '.join(micro_context)}." if micro_context else "",
+        f"Senal Casafari: {', '.join(casafari_context[:3])}." if casafari_context else "",
+        f"Historia de score: {str(row.get('ai_score_story') or row.get('score_breakdown') or '-')}" if row.get("score_breakdown") or row.get("ai_score_story") else "",
+    ]
+    answer = " ".join(part for part in answer_parts if part).strip() or "Sin explicacion suficiente."
+    return {
+        "query": query_raw,
+        "intent": "context_explain",
+        "title": f"Por que sale arriba {label}",
+        "answer": answer,
+        "next_step": str(row.get("ai_next_step") or "Abre el contexto o el mapa para validar el caso."),
+        "suggestions": _build_opportunity_suggestions([row], 1),
+        "followups": [
+            "que pesa mas aqui",
+            "abre la seleccion en mapa",
+            "comparala con la otra",
+        ],
+        "search_payload": None,
+    }
+
+
+def _build_zone_weight_payload(query_raw: str, row: dict[str, Any]) -> dict[str, Any]:
+    label = str(row.get("zone_label") or "Zona")
+    market_signal = round(
+        (
+            float(row.get("zone_heat_score") or 0.0)
+            + float(row.get("zone_relative_heat_score") or 0.0)
+            + float(row.get("zone_liquidity_score") or 0.0)
+            + float(row.get("zone_pressure_score") or 0.0)
+        ) / 4.0,
+        1,
+    )
+    official_signal = round(
+        (
+            float(row.get("zone_transformation_signal_score") or 0.0)
+            + (12.0 if row.get("official_population") else 0.0)
+            + (10.0 if row.get("official_vulnerability_index") is not None else 0.0)
+        ),
+        1,
+    )
+    quality_signal = round(float(row.get("zone_confidence_score") or 0.0), 1)
+    winner = "mercado" if market_signal >= official_signal else "contexto oficial"
+    answer = (
+        f"En {label} ahora mismo pesa mas {winner}. "
+        f"Mercado {market_signal:.1f}, contexto oficial {official_signal:.1f}, calidad de lectura {quality_signal:.1f}. "
+        f"El mercado recoge actividad, liquidez y presion; lo oficial esta entrando sobre todo por transformacion, poblacion y contexto territorial."
+    )
+    return {
+        "query": query_raw,
+        "intent": "context_weight",
+        "title": f"Que pesa mas en {label}",
+        "answer": answer,
+        "next_step": "Si quieres, te lo rehago separando mercado, Casafari, geografia y contexto oficial por bloques.",
+        "suggestions": _build_zone_suggestions([row], 1),
+        "followups": [
+            "explicamela",
+            "comparala en confianza",
+            "abre la seleccion en mapa",
+        ],
+        "search_payload": None,
+    }
+
+
+def _build_opportunity_weight_payload(query_raw: str, row: dict[str, Any]) -> dict[str, Any]:
+    label = str(row.get("asset_address") or f"Evento {row.get('event_id')}")
+    market_signal = round(
+        float(row.get("score_event_base") or 0.0)
+        + float(row.get("score_recency") or 0.0)
+        + float(row.get("score_price_signal") or 0.0),
+        1,
+    )
+    territorial_signal = round(
+        float(row.get("score_zone_signal") or 0.0)
+        + float(row.get("score_microzone_signal") or 0.0)
+        + float(row.get("score_geo_signal") or 0.0),
+        1,
+    )
+    predictive_signal = round(float(row.get("score_predictive_signal") or 0.0), 1)
+    if market_signal >= territorial_signal:
+        winner = "la senal de mercado"
+    else:
+        winner = "la lectura territorial"
+    answer = (
+        f"En {label} pesa mas {winner}. "
+        f"Mercado {market_signal:.1f}, territorial {territorial_signal:.1f}, prediccion {predictive_signal:.1f}. "
+        f"Aqui meto evento, recencia y precio en mercado; zona, microzona y geo en territorial."
+    )
+    return {
+        "query": query_raw,
+        "intent": "context_weight",
+        "title": f"Que pesa mas en {label}",
+        "answer": answer,
+        "next_step": "Si quieres, te lo descompongo aun mas entre zona, microzona, geo y Casafari.",
+        "suggestions": _build_opportunity_suggestions([row], 1),
+        "followups": [
+            "explicamela",
+            "abre la seleccion en mapa",
+            "comparala con la otra",
+        ],
+        "search_payload": None,
+    }
+
+
 def _build_opportunity_compare_payload(
     row_a: dict[str, Any],
     row_b: dict[str, Any],
@@ -907,7 +1125,7 @@ def _build_followups(
 
     if intent == "context_explain":
         return [
-            "comparala con otra zona",
+            "que pesa mas aqui",
             "abre el contexto",
             "abre en mapa",
         ]
@@ -923,8 +1141,15 @@ def _build_selected_context_payload(
     session: Session,
     query_raw: str,
     selected_row: dict[str, Any],
+    *,
+    query_key: str | None = None,
 ) -> dict[str, Any] | None:
     target_view = str(selected_row.get("target_view") or "").strip().lower()
+    query_key = query_key or _clean_query(query_raw)
+    is_weight_question = any(
+        term in query_key
+        for term in ("que pesa mas", "pesa mas", "mercado o oficial", "que esta pesando")
+    )
 
     if target_view == "radar" and selected_row.get("zone_label"):
         rows = get_zone_intelligence_v2(session, window_days=14)
@@ -932,6 +1157,8 @@ def _build_selected_context_payload(
         if not matched:
             return None
         row = matched[0]
+        if is_weight_question:
+            return _build_zone_weight_payload(query_raw, row)
         return {
             "query": query_raw,
             "intent": "context_explain",
@@ -952,17 +1179,9 @@ def _build_selected_context_payload(
         row = _find_opportunity_row_by_event(rows, selected_row.get("event_id"))
         if row is None:
             return None
-        event_label = row.get("asset_address") or f"Evento {row.get('event_id')}"
-        return {
-            "query": query_raw,
-            "intent": "context_explain",
-            "title": f"Explicacion de {event_label}",
-            "answer": str(row.get("ai_summary") or row.get("reason") or row.get("ai_brief") or "-"),
-            "next_step": str(row.get("ai_next_step") or "-"),
-            "suggestions": _build_opportunity_suggestions([row], 1),
-            "followups": _build_followups(intent="context_explain", selected_row=selected_row),
-            "search_payload": None,
-        }
+        if is_weight_question:
+            return _build_opportunity_weight_payload(query_raw, row)
+        return _build_opportunity_deep_explain_payload(query_raw, row)
 
     if target_view == "casafari":
         label = selected_row.get("item") or selected_row.get("query_text") or "Caso Casafari"
@@ -1205,12 +1424,19 @@ def run_copilot_query(
         labels = _extract_compare_labels(query_key, rows, context)
         matched_rows = _find_zone_rows_by_labels(rows, labels)
         if len(matched_rows) >= 2:
-            focus = _extract_zone_compare_focus(query_key)
-            compare_payload = _build_zone_compare_payload(
-                matched_rows[0],
-                matched_rows[1],
-                focus=focus,
-            )
+            focuses = _extract_zone_compare_focuses(query_key)
+            if len(focuses) >= 2:
+                compare_payload = _build_zone_multi_compare_payload(
+                    matched_rows[0],
+                    matched_rows[1],
+                    focuses=focuses,
+                )
+            else:
+                compare_payload = _build_zone_compare_payload(
+                    matched_rows[0],
+                    matched_rows[1],
+                    focus=focuses[0],
+                )
             compare_payload["query"] = query_raw
             compare_payload["intent"] = "zone_compare"
             compare_payload["followups"] = _build_followups(
@@ -1222,8 +1448,13 @@ def run_copilot_query(
             compare_payload["search_payload"] = None
             return maybe_enhance_copilot_payload(query_raw, compare_payload, context=context)
 
-    if selected_row and any(term in query_key for term in ("por que", "explica", "explicame", "esta arriba", "que pasa")):
-        context_payload = _build_selected_context_payload(session, query_raw, selected_row)
+    if selected_row and any(term in query_key for term in ("por que", "explica", "explicame", "esta arriba", "que pasa", "que pesa mas", "mercado o oficial", "que esta pesando")):
+        context_payload = _build_selected_context_payload(
+            session,
+            query_raw,
+            selected_row,
+            query_key=query_key,
+        )
         if context_payload:
             context_payload["understanding"] = understanding
             return maybe_enhance_copilot_payload(query_raw, context_payload, context=context)

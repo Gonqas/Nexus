@@ -514,3 +514,168 @@ def test_copilot_supports_multi_intent_queries(monkeypatch) -> None:
         assert len(payload["suggestions"]) >= 2
     finally:
         session.close()
+
+
+def test_copilot_can_compare_zone_in_multiple_focuses(monkeypatch) -> None:
+    session = make_session()
+    try:
+        monkeypatch.setattr(
+            copilot_service,
+            "get_zone_intelligence_v2",
+            lambda session, window_days=14: [
+                {
+                    "zone_label": "Prosperidad",
+                    "zone_capture_score": 61.0,
+                    "zone_confidence_score": 78.0,
+                    "zone_transformation_signal_score": 21.0,
+                    "zone_relative_heat_score": 58.0,
+                    "zone_liquidity_score": 47.0,
+                    "zone_heat_score": 54.0,
+                    "events_14d_per_10k_population": 0.5,
+                    "geo_point_ratio": 0.82,
+                    "resolved_ratio": 0.71,
+                    "casafari_raw_in_zone": 12,
+                    "official_population": 36961,
+                    "official_vulnerability_index": 6.1,
+                    "official_change_of_use_24m": 2,
+                    "official_closed_locales": 227,
+                    "official_vut_units": 180,
+                    "ai_brief": "Buena lectura comercial.",
+                    "ai_next_step": "Seguir y vigilar.",
+                    "executive_summary": "Prosperidad va fuerte.",
+                    "recommended_action": "Seguir y vigilar",
+                },
+                {
+                    "zone_label": "Guindalera",
+                    "zone_capture_score": 54.0,
+                    "zone_confidence_score": 57.0,
+                    "zone_transformation_signal_score": 18.0,
+                    "zone_relative_heat_score": 52.0,
+                    "zone_liquidity_score": 41.0,
+                    "zone_heat_score": 49.0,
+                    "events_14d_per_10k_population": 0.4,
+                    "geo_point_ratio": 0.46,
+                    "resolved_ratio": 0.38,
+                    "casafari_raw_in_zone": 9,
+                    "official_population": 28911,
+                    "official_vulnerability_index": 5.6,
+                    "official_change_of_use_24m": 1,
+                    "official_closed_locales": 180,
+                    "official_vut_units": 90,
+                    "ai_brief": "Lectura razonable, algo mas fragil.",
+                    "ai_next_step": "Validar confianza.",
+                    "executive_summary": "Guindalera aguanta.",
+                    "recommended_action": "Validar confianza",
+                },
+            ],
+        )
+
+        payload = copilot_service.run_copilot_query(
+            session,
+            "comparame Prosperidad vs Guindalera en captacion, confianza y transformacion",
+        )
+
+        assert payload["intent"] == "zone_compare"
+        assert payload["comparison_focuses"] == ["capture", "confidence", "transformation"]
+        assert "captacion" in payload["answer"].lower()
+        assert "confianza" in payload["answer"].lower()
+        assert "transformacion" in payload["answer"].lower()
+    finally:
+        session.close()
+
+
+def test_copilot_can_deep_explain_selected_opportunity(monkeypatch) -> None:
+    session = make_session()
+    try:
+        monkeypatch.setattr(
+            copilot_service,
+            "get_opportunity_queue_v2",
+            lambda session, window_days=14, limit=250: [
+                {
+                    "event_id": 24,
+                    "asset_address": "calle clara del rey",
+                    "event_type": "listing_detected",
+                    "portal": "Idealista",
+                    "reason": "entrada reciente | geo por barrio",
+                    "score_event_base": 32.0,
+                    "score_recency": 6.0,
+                    "score_zone_signal": 8.5,
+                    "score_microzone_signal": 5.9,
+                    "score_geo_signal": 12.0,
+                    "score_predictive_signal": 5.9,
+                    "score_breakdown": "evento 32.0 + recencia 6.0 + zona 8.5 + microzona 5.9 + geo 12.0",
+                    "zone_label": "Prosperidad",
+                    "zone_capture_score": 57.4,
+                    "zone_confidence_score": 78.2,
+                    "zone_relative_heat_score": 58.4,
+                    "microzone_label": "Prosperidad / MZ mop-p9xa",
+                    "microzone_capture_score": 51.0,
+                    "microzone_concentration_score": 67.0,
+                    "ai_next_step": "Priorizar validacion y accion en los proximos 14 dias.",
+                    "ai_score_story": "Evento 32.0 + recencia 6.0. Zona 8.5 + microzona 5.9. Geo 12.0 + prediccion 5.9.",
+                    "ai_brief": "Entrada nueva con prioridad alta.",
+                }
+            ],
+        )
+
+        payload = copilot_service.run_copilot_query(
+            session,
+            "explicamela bien",
+            context={
+                "selected_row": {
+                    "target_view": "queue",
+                    "event_id": 24,
+                    "item": "calle clara del rey",
+                    "tipo": "Oportunidad",
+                }
+            },
+        )
+
+        assert payload["intent"] == "context_explain"
+        assert "zona:" in payload["answer"].lower()
+        assert "microzona:" in payload["answer"].lower()
+        assert "senal casafari:" in payload["answer"].lower()
+    finally:
+        session.close()
+
+
+def test_copilot_can_explain_what_weighs_more_in_selected_opportunity(monkeypatch) -> None:
+    session = make_session()
+    try:
+        monkeypatch.setattr(
+            copilot_service,
+            "get_opportunity_queue_v2",
+            lambda session, window_days=14, limit=250: [
+                {
+                    "event_id": 24,
+                    "asset_address": "calle clara del rey",
+                    "score_event_base": 32.0,
+                    "score_recency": 6.0,
+                    "score_price_signal": 0.0,
+                    "score_zone_signal": 8.5,
+                    "score_microzone_signal": 5.9,
+                    "score_geo_signal": 12.0,
+                    "score_predictive_signal": 5.9,
+                    "ai_brief": "Entrada nueva con prioridad alta.",
+                    "ai_next_step": "Priorizar validacion.",
+                }
+            ],
+        )
+
+        payload = copilot_service.run_copilot_query(
+            session,
+            "que pesa mas aqui",
+            context={
+                "selected_row": {
+                    "target_view": "queue",
+                    "event_id": 24,
+                    "item": "calle clara del rey",
+                    "tipo": "Oportunidad",
+                }
+            },
+        )
+
+        assert payload["intent"] == "context_weight"
+        assert "territorial" in payload["answer"].lower() or "mercado" in payload["answer"].lower()
+    finally:
+        session.close()

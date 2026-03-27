@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QUrl
-from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+
+from core.runtime_paths import STATE_DATA_DIR
 
 try:
     from PySide6.QtWebEngineCore import QWebEngineSettings
@@ -33,6 +37,9 @@ def _can_use_web_engine() -> bool:
         return False
 
     return True
+
+
+MAP_EXPORT_PATH = STATE_DATA_DIR / "map_preview.html"
 
 
 def _leaflet_html(payload: dict[str, Any], selection: dict[str, Any] | None = None) -> str:
@@ -369,6 +376,7 @@ class LeafletMapWidget(QWidget):
 
         self.setMinimumHeight(620)
         self._payload: dict[str, Any] | None = None
+        self._selection: dict[str, Any] | None = None
         self._web_engine_failed = False
 
         layout = QVBoxLayout(self)
@@ -388,12 +396,43 @@ class LeafletMapWidget(QWidget):
             self.fallback_label = None
         else:
             self.web_view = None
+            self.fallback_container = QWidget()
+            fallback_layout = QVBoxLayout(self.fallback_container)
+            fallback_layout.setContentsMargins(0, 0, 0, 0)
+            fallback_layout.setSpacing(10)
             self.fallback_label = QLabel(
                 "Mapa embebido desactivado en modo seguro. La lectura espacial sigue disponible en el panel lateral."
             )
             self.fallback_label.setWordWrap(True)
             self.fallback_label.setObjectName("PageSubtitle")
-            layout.addWidget(self.fallback_label)
+            fallback_layout.addWidget(self.fallback_label)
+            button_row = QHBoxLayout()
+            self.open_external_button = QPushButton("Abrir mapa en navegador")
+            self.open_external_button.setObjectName("GhostButton")
+            self.open_external_button.setEnabled(False)
+            self.open_external_button.clicked.connect(self.open_in_browser)
+            button_row.addWidget(self.open_external_button)
+            button_row.addStretch()
+            fallback_layout.addLayout(button_row)
+            layout.addWidget(self.fallback_container)
+            self._set_fallback_button_enabled(False)
+
+    def _set_fallback_button_enabled(self, enabled: bool) -> None:
+        button = getattr(self, "open_external_button", None)
+        if button is not None:
+            button.setEnabled(enabled)
+
+    def _export_html(self) -> Path:
+        MAP_EXPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        MAP_EXPORT_PATH.write_text(
+            _leaflet_html(self._payload or {}, selection=self._selection),
+            encoding="utf-8",
+        )
+        return MAP_EXPORT_PATH
+
+    def open_in_browser(self) -> None:
+        html_path = self._export_html()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(html_path)))
 
     def _handle_web_engine_termination(self, *_args) -> None:
         self._web_engine_failed = True
@@ -409,6 +448,7 @@ class LeafletMapWidget(QWidget):
             "El motor del mapa embebido ha fallado y la app ha pasado a modo seguro. "
             "Puedes seguir usando la lectura espacial desde el panel lateral sin perder el trabajo."
         )
+        self._set_fallback_button_enabled(bool(self._payload))
 
     def load_payload(
         self,
@@ -417,6 +457,8 @@ class LeafletMapWidget(QWidget):
         selection: dict[str, Any] | None = None,
     ) -> None:
         self._payload = payload
+        self._selection = selection or {}
+        self._export_html()
 
         if self.web_view is not None and not self._web_engine_failed:
             self.web_view.setHtml(
@@ -433,3 +475,4 @@ class LeafletMapWidget(QWidget):
                 f"Microzonas: {summary.get('microzones_total', 0)} | "
                 f"Alta prioridad: {summary.get('high_priority_geo_opportunities', 0)}"
             )
+            self._set_fallback_button_enabled(True)

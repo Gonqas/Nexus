@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QMessageBox,
 )
 
 from app.workers.csv_import_worker import CsvImportWorker
@@ -30,6 +31,7 @@ from core.services.import_inbox_service import (
     is_supported_baseline_file,
     list_pending_baseline_files,
 )
+from core.services.system_reset_service import reset_runtime_database
 from db.session import SessionLocal
 
 
@@ -140,10 +142,14 @@ class ImportView(QWidget):
         self.select_button.clicked.connect(self.select_files)
         self.import_button = QPushButton("Importar seleccionados")
         self.import_button.clicked.connect(self.start_import)
+        self.reset_db_button = QPushButton("Vaciar base de datos")
+        self.reset_db_button.setObjectName("GhostButton")
+        self.reset_db_button.clicked.connect(self.reset_database)
         self.delete_checkbox = QCheckBox("Borrar fichero tras importar bien")
         self.delete_checkbox.setChecked(True)
         buttons_row.addWidget(self.select_button)
         buttons_row.addWidget(self.import_button)
+        buttons_row.addWidget(self.reset_db_button)
         buttons_row.addWidget(self.delete_checkbox)
         buttons_row.addStretch()
         action_layout.addLayout(buttons_row)
@@ -388,6 +394,51 @@ class ImportView(QWidget):
         self.worker.finished_ok.connect(self.on_finished_ok)
         self.worker.failed.connect(self.on_failed)
         self.worker.start()
+
+    def reset_database(self) -> None:
+        confirm = QMessageBox.question(
+            self,
+            "Vaciar base de datos",
+            (
+                "Esto borrara la base actual y la dejara limpia para una nueva importacion. "
+                "Antes se guardara una copia de respaldo. ¿Quieres continuar?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            result = reset_runtime_database(create_backup=True)
+        except Exception as exc:
+            self.append_log(f"No se pudo vaciar la base de datos: {exc}")
+            QMessageBox.critical(
+                self,
+                "Error al vaciar la base",
+                f"No se pudo vaciar la base de datos.\n\n{exc}",
+            )
+            return
+
+        self.selected_files = []
+        self.refresh_selected_box()
+        self.load_history()
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.progress_label.setText("Base vaciada. Lista para una nueva importacion.")
+        backup_path = result.get("backup_path")
+        if backup_path:
+            self.append_log(f"Base vaciada. Copia de respaldo en: {backup_path}")
+        else:
+            self.append_log("Base vaciada sin copia previa.")
+        QMessageBox.information(
+            self,
+            "Base vaciada",
+            (
+                "La base de datos ha quedado limpia para una nueva importacion."
+                + (f"\n\nCopia creada en:\n{backup_path}" if backup_path else "")
+            ),
+        )
 
     def on_progress(self, message: str, current: int, total: int) -> None:
         self.progress_label.setText(message)
