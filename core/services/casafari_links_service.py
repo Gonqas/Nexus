@@ -1,6 +1,7 @@
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, joinedload
 
+from core.services.ai_explanations_service import explain_casafari_case
 from core.services.casafari_reconciliation_service import reconcile_casafari_raw_items
 from core.services.casafari_semantics_service import (
     classify_address_semantics,
@@ -198,6 +199,7 @@ def list_casafari_links(
             "latest_review_reviewer": latest_review.get("reviewer"),
             "latest_review_created_at": latest_review.get("created_at"),
         }
+        row.update(explain_casafari_case(row))
 
         if focus_filter == "review_needed":
             if row["match_status"] not in {"ambiguous", "unresolved", "pending"}:

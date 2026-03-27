@@ -52,7 +52,9 @@ def _enrich_rows(rows: list[dict]) -> list[dict]:
         enriched_row["_heat_sort"] = heat_clipped.get(zone_label, 0.0)
         enriched_row["_pressure_sort"] = pressure_clipped.get(zone_label, 0.0)
         enriched_row["_liquidity_sort"] = liquidity_clipped.get(zone_label, 0.0)
-        enriched_row["radar_explanation"] = row.get("executive_summary") or row.get("score_explanation")
+        enriched_row["radar_explanation"] = (
+            row.get("ai_brief") or row.get("executive_summary") or row.get("score_explanation")
+        )
         enriched.append(enriched_row)
 
     return enriched

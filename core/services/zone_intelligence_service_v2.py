@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from core.services.ai_explanations_service import explain_zone_row
 from core.services.predictive_signal_service import build_zone_prediction
 from core.features.zone_features_v2 import build_zone_feature_rows_v2
 from core.scoring.zone_scoring_v2 import score_zone_rows_v2
@@ -78,7 +79,11 @@ def get_zone_intelligence_v2(session: Session, window_days: int = 14) -> list[di
     for row in rows:
         row = dict(row)
         row.update(build_zone_prediction(row))
-        row["executive_summary"] = build_zone_executive_summary(row)
+        legacy_summary = build_zone_executive_summary(row)
+        explanation = explain_zone_row(row)
+        row["legacy_executive_summary"] = legacy_summary
+        row["executive_summary"] = explanation["ai_summary"]
+        row.update(explanation)
         enriched.append(row)
 
     return enriched

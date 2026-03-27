@@ -424,7 +424,7 @@ class OpportunityQueueView(QWidget):
                 safe_money(row.get("price_new")),
                 compact_detail_lines(
                     safe_text(row.get("priority_label")),
-                    safe_text(row.get("reason")),
+                    safe_text(row.get("ai_brief") or row.get("reason")),
                 ),
             ]
 
@@ -501,7 +501,7 @@ class OpportunityQueueView(QWidget):
         self.detail_title.setText(f"Oportunidad #{event_id}")
         self.lbl_score.setText(safe_text(row.get("score")))
         self.lbl_priority.setText(safe_text(row.get("priority_label")))
-        self.lbl_reason.setText(safe_text(row.get("reason")))
+        self.lbl_reason.setText(safe_text(row.get("ai_summary") or row.get("reason")))
         self.lbl_asset.setText(
             compact_detail_lines(
                 safe_text(row.get("asset_address")),
@@ -521,6 +521,7 @@ class OpportunityQueueView(QWidget):
             compact_detail_lines(
                 f"Oportunidad {safe_text(row.get('predicted_opportunity_30d_score'))} ({safe_text(row.get('predicted_opportunity_30d_band'))})",
                 f"Zona {safe_text(row.get('predicted_absorption_30d_score'))} ({safe_text(row.get('predicted_absorption_30d_band'))})",
+                safe_text(row.get("ai_next_step")),
             )
         )
 
@@ -528,9 +529,12 @@ class OpportunityQueueView(QWidget):
             f"{safe_text(row.get('zone_label'))} | {safe_text(row.get('zone_recommended_action'))}"
         )
         self.lbl_zone_context.setText(
-            f"{safe_int(row.get('zone_population'))} hab | "
-            f"{safe_float(row.get('zone_events_14d_per_10k_population'))} evt/10k | "
-            f"IVT {safe_float(row.get('zone_vulnerability_index'))}"
+            compact_detail_lines(
+                safe_text(row.get("ai_zone_context")),
+                f"{safe_int(row.get('zone_population'))} hab | "
+                f"{safe_float(row.get('zone_events_14d_per_10k_population'))} evt/10k | "
+                f"IVT {safe_float(row.get('zone_vulnerability_index'))}",
+            )
         )
         self.lbl_zone_scores.setText(
             compact_detail_lines(
@@ -555,6 +559,13 @@ class OpportunityQueueView(QWidget):
                 f"Evento {safe_text(row.get('score_event_base'))} | recencia {safe_text(row.get('score_recency'))}",
                 f"Zona {safe_text(row.get('score_zone_signal'))} | microzona {safe_text(row.get('score_microzone_signal'))}",
                 f"Geo {safe_text(row.get('score_geo_signal'))} | predicción {safe_text(row.get('score_predictive_signal'))}",
+            )
+        )
+
+        self.lbl_breakdown.setText(
+            compact_detail_lines(
+                safe_text(row.get("ai_score_story")),
+                f"Detalle tecnico: {safe_text(row.get('score_breakdown'))}",
             )
         )
 

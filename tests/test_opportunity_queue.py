@@ -174,6 +174,10 @@ def test_opportunity_queue_filters_groups_and_breakdown(monkeypatch) -> None:
         assert rows[0]["asset_lon"] is not None
         assert rows[0]["predicted_opportunity_30d_score"] >= 0
         assert rows[0]["predicted_absorption_30d_score"] >= 0
+        assert rows[0]["ai_summary"]
+        assert rows[0]["ai_brief"]
+        assert rows[0]["ai_next_step"]
+        assert rows[0]["ai_score_story"]
 
         filtered = filter_opportunity_rows(
             rows,

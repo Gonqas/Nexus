@@ -335,7 +335,7 @@ class CasafariLinksView(QWidget):
                 safe_text(row["address_raw"]),
                 safe_text(row["portal"]),
                 safe_text(row["match_status"]),
-                safe_text(row["reason_taxonomy"]),
+                safe_text(row.get("ai_brief") or row["reason_taxonomy"]),
             ]
             for col_idx, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -374,6 +374,7 @@ class CasafariLinksView(QWidget):
         self.lbl_reason.setText(
             f"{safe_text(row['reason_taxonomy'])} | dirección {safe_text(row['address_precision'])}"
         )
+        self.lbl_reason.setText(safe_text(row.get("ai_summary")))
         self.lbl_phone.setText(
             f"{safe_text(row['contact_phone'])} | perfil {safe_text(row['phone_profile'])}"
         )
@@ -384,6 +385,10 @@ class CasafariLinksView(QWidget):
             f"{safe_text(row['listing_label'])} | listing_id {safe_text(row['listing_id'])}"
         )
         self.lbl_note.setText(safe_text(row["match_note"]))
+
+        self.lbl_note.setText(
+            f"{safe_text(row.get('ai_next_step'))}\n\nNota tecnica: {safe_text(row['match_note'])}"
+        )
 
         latest_bits = [
             safe_text(row["latest_review_label"]),

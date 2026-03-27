@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from core.features.microzones import infer_microzone_for_asset
 from core.features.zone_features import infer_zone_label_for_asset
 from core.normalization.text import normalize_text_key
+from core.services.ai_explanations_service import explain_opportunity_row
 from core.services.casafari_semantics_service import classify_phone_profile
 from core.services.microzone_intelligence_service import get_microzone_intelligence
 from core.services.predictive_signal_service import build_opportunity_prediction
@@ -402,6 +403,7 @@ def get_opportunity_queue_v2(
             "zone_recommended_action": zone_row.get("recommended_action")
             if zone_row
             else None,
+            "ai_zone_context": zone_row.get("ai_context_line") if zone_row else None,
             "zone_population": zone_row.get("official_population") if zone_row else None,
             "zone_events_14d_per_10k_population": zone_row.get(
                 "events_14d_per_10k_population"
@@ -464,6 +466,7 @@ def get_opportunity_queue_v2(
             "price_old": event.price_old,
             "price_new": event.price_new,
         }
+        row.update(explain_opportunity_row(row))
         rows.append(row)
 
     rows.sort(
@@ -574,7 +577,7 @@ def build_opportunity_groups(
         )
         zones_count = len({row.get("zone_label") for row in group_rows if row.get("zone_label")})
         portals_count = len({row.get("portal") for row in group_rows if row.get("portal")})
-        reasons = Counter(row.get("reason") or "" for row in group_rows)
+        reasons = Counter((row.get("ai_brief") or row.get("reason") or "") for row in group_rows)
 
         results.append(
             {
