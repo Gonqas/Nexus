@@ -31,6 +31,7 @@ from core.services.import_inbox_service import (
     is_supported_baseline_file,
     list_pending_baseline_files,
 )
+from core.services.search_service import ensure_search_index
 from core.services.system_reset_service import reset_runtime_database
 from db.session import SessionLocal
 
@@ -253,6 +254,14 @@ class ImportView(QWidget):
     def append_log(self, text: str) -> None:
         self.log_box.append(text)
 
+    def rebuild_search_index(self) -> None:
+        with SessionLocal() as session:
+            status = ensure_search_index(session, force_rebuild=True)
+            session.commit()
+        self.append_log(
+            f"Indice de busqueda rehecho: backend={safe_text(status.get('backend'))} | docs={safe_text(status.get('doc_count'))}"
+        )
+
     def ensure_loaded(self, *, force: bool = False) -> None:
         if self._has_loaded and not force:
             return
@@ -426,6 +435,7 @@ class ImportView(QWidget):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_label.setText("Base vaciada. Lista para una nueva importacion.")
+        self.rebuild_search_index()
         backup_path = result.get("backup_path")
         if backup_path:
             self.append_log(f"Base vaciada. Copia de respaldo en: {backup_path}")
@@ -470,6 +480,7 @@ class ImportView(QWidget):
         self.append_log(
             f"Casafari resueltos: {summary['casafari_raw_items_resolved']} | eventos creados: {summary['casafari_market_events_created']}"
         )
+        self.rebuild_search_index()
 
         for file_result in result["files"]:
             self.append_log(
