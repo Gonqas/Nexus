@@ -154,10 +154,16 @@ class MapView(QWidget):
         first_row.addWidget(self.event_combo)
         first_row.addWidget(QLabel("Capas"))
         first_row.addWidget(self.layer_combo)
+        self.advanced_toggle_button = QPushButton("Mostrar capas avanzadas")
+        self.advanced_toggle_button.setObjectName("GhostButton")
+        self.advanced_toggle_button.clicked.connect(self.toggle_advanced_filters)
+        first_row.addWidget(self.advanced_toggle_button)
         first_row.addWidget(self.refresh_button)
         filters_layout.addLayout(first_row)
 
+        self.advanced_filters_widget = QWidget()
         second_row = QHBoxLayout()
+        second_row.setContentsMargins(0, 0, 0, 0)
         self.score_combo = QComboBox()
         self.score_combo.addItems(["all", "40", "50", "60"])
         self.score_combo.currentTextChanged.connect(self.load_data)
@@ -195,7 +201,9 @@ class MapView(QWidget):
         second_row.addWidget(QLabel("Heat"))
         second_row.addWidget(self.heat_combo)
         second_row.addStretch()
-        filters_layout.addLayout(second_row)
+        self.advanced_filters_widget.setLayout(second_row)
+        self.advanced_filters_widget.setVisible(False)
+        filters_layout.addWidget(self.advanced_filters_widget)
         layout.addWidget(filters_box)
 
         self.summary_label = QLabel("Sin lectura espacial")
@@ -280,6 +288,13 @@ class MapView(QWidget):
         if text == "all":
             return None
         return float(text)
+
+    def toggle_advanced_filters(self) -> None:
+        visible = not self.advanced_filters_widget.isVisible()
+        self.advanced_filters_widget.setVisible(visible)
+        self.advanced_toggle_button.setText(
+            "Ocultar capas avanzadas" if visible else "Mostrar capas avanzadas"
+        )
 
     def load_data(self) -> None:
         self._has_loaded = True

@@ -22,6 +22,9 @@ def _can_use_web_engine() -> bool:
     if not WEB_ENGINE_AVAILABLE:
         return False
 
+    if os.name == "nt" and os.environ.get("NEXUS_ENABLE_EMBEDDED_MAP", "0") != "1":
+        return False
+
     if os.environ.get("QT_QPA_PLATFORM", "").lower() == "offscreen":
         return False
 
@@ -366,6 +369,7 @@ class LeafletMapWidget(QWidget):
 
         self.setMinimumHeight(620)
         self._payload: dict[str, Any] | None = None
+        self._web_engine_failed = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -379,14 +383,32 @@ class LeafletMapWidget(QWidget):
                     QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
                     True,
                 )
+            self.web_view.renderProcessTerminated.connect(self._handle_web_engine_termination)
             layout.addWidget(self.web_view)
             self.fallback_label = None
         else:
             self.web_view = None
-            self.fallback_label = QLabel("Mapa no disponible en este modo de render. La vista sigue mostrando la lectura espacial en el panel lateral.")
+            self.fallback_label = QLabel(
+                "Mapa embebido desactivado en modo seguro. La lectura espacial sigue disponible en el panel lateral."
+            )
             self.fallback_label.setWordWrap(True)
             self.fallback_label.setObjectName("PageSubtitle")
             layout.addWidget(self.fallback_label)
+
+    def _handle_web_engine_termination(self, *_args) -> None:
+        self._web_engine_failed = True
+        if self.web_view is not None:
+            self.web_view.hide()
+        if self.fallback_label is None:
+            self.fallback_label = QLabel("")
+            self.fallback_label.setWordWrap(True)
+            self.fallback_label.setObjectName("PageSubtitle")
+            self.layout().addWidget(self.fallback_label)
+        self.fallback_label.show()
+        self.fallback_label.setText(
+            "El motor del mapa embebido ha fallado y la app ha pasado a modo seguro. "
+            "Puedes seguir usando la lectura espacial desde el panel lateral sin perder el trabajo."
+        )
 
     def load_payload(
         self,
@@ -396,7 +418,7 @@ class LeafletMapWidget(QWidget):
     ) -> None:
         self._payload = payload
 
-        if self.web_view is not None:
+        if self.web_view is not None and not self._web_engine_failed:
             self.web_view.setHtml(
                 _leaflet_html(payload, selection=selection),
                 QUrl("https://nexus-madrid.local/"),

@@ -45,6 +45,9 @@ class SearchView(QWidget):
         super().__init__()
         self._has_loaded = False
         self.copilot_rows: list[dict] = []
+        self.chat_history: list[dict] = []
+        self.last_copilot_payload: dict | None = None
+        self.selected_copilot_row: dict | None = None
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -128,6 +131,41 @@ class SearchView(QWidget):
         self.summary_label.setObjectName("HeroSummary")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
+
+        self.context_label = QLabel("Sin contexto activo. Si seleccionas una fila, luego puedes preguntar 'explicamela' o 'comparala con otra zona'.")
+        self.context_label.setObjectName("MetricDetail")
+        self.context_label.setWordWrap(True)
+        layout.addWidget(self.context_label)
+
+        self.understanding_label = QLabel("Interpretacion: esperando una consulta.")
+        self.understanding_label.setObjectName("MetricDetail")
+        self.understanding_label.setWordWrap(True)
+        layout.addWidget(self.understanding_label)
+
+        self.history_box = QGroupBox("Conversacion reciente")
+        history_layout = QVBoxLayout(self.history_box)
+        history_layout.setSpacing(8)
+
+        self.history_label = QLabel(
+            "Todavia no hay historial. Cuando preguntes algo, aqui veras las ultimas respuestas para seguir la conversacion sin perder contexto."
+        )
+        self.history_label.setObjectName("MetricDetail")
+        self.history_label.setWordWrap(True)
+        history_layout.addWidget(self.history_label)
+
+        self.followups_row = QHBoxLayout()
+        self.followups_row.addWidget(QLabel("Siguientes preguntas"))
+        self.followup_buttons: list[QPushButton] = []
+        for _ in range(3):
+            button = QPushButton("-")
+            button.setObjectName("GhostButton")
+            button.setVisible(False)
+            button.clicked.connect(lambda _checked=False, btn=button: self.run_preset_query(btn.text()))
+            self.followup_buttons.append(button)
+            self.followups_row.addWidget(button)
+        self.followups_row.addStretch()
+        history_layout.addLayout(self.followups_row)
+        layout.addWidget(self.history_box)
 
         self.copilot_box = QGroupBox("Respuesta")
         copilot_layout = QVBoxLayout(self.copilot_box)
@@ -231,6 +269,8 @@ class SearchView(QWidget):
         )
 
         self.show_classic_results(False)
+        self._render_chat_history()
+        self._set_followups([])
 
     def ensure_loaded(self, *, force: bool = False) -> None:
         if self._has_loaded and not force:
@@ -250,6 +290,29 @@ class SearchView(QWidget):
             self.classic_toggle_button.setText("Ocultar busqueda clasica")
         else:
             self.classic_toggle_button.setText("Mostrar busqueda clasica")
+
+    def _set_followups(self, followups: list[str]) -> None:
+        for index, button in enumerate(self.followup_buttons):
+            if index < len(followups):
+                button.setText(followups[index])
+                button.setVisible(True)
+            else:
+                button.setVisible(False)
+
+    def _render_chat_history(self) -> None:
+        if not self.chat_history:
+            self.history_label.setText(
+                "Todavia no hay historial. Cuando preguntes algo, aqui veras las ultimas respuestas para seguir la conversacion sin perder contexto."
+            )
+            return
+
+        lines: list[str] = []
+        for entry in self.chat_history[-3:]:
+            question = safe_text(entry.get("question"))
+            title = safe_text(entry.get("title"))
+            answer = safe_text(entry.get("answer"))
+            lines.append(f"Tu: {question}\nCopiloto: {title}. {answer}")
+        self.history_label.setText("\n\n".join(lines))
 
     def _build_table_tab(self, title: str, headers: list[str]) -> QTableWidget:
         page = QWidget()
@@ -282,11 +345,20 @@ class SearchView(QWidget):
         self.open_context_button.setEnabled(enabled)
         can_execute = False
         can_open_map = False
+        self.selected_copilot_row = None
         if enabled:
             row = self.copilot_rows[row_idx]
+            self.selected_copilot_row = dict(row)
             can_execute = bool(row.get("action_id"))
             can_open_map = bool(
                 row.get("zone_label") or row.get("microzone_label") or row.get("event_id")
+            )
+            item = safe_text(row.get("item"))
+            kind = safe_text(row.get("tipo"))
+            self.context_label.setText(f"Contexto activo: {kind} | {item}")
+        else:
+            self.context_label.setText(
+                "Sin contexto activo. Si seleccionas una fila, luego puedes preguntar 'explicamela' o 'comparala con otra zona'."
             )
         self.execute_action_button.setEnabled(can_execute)
         self.open_map_button.setEnabled(can_open_map)
@@ -325,12 +397,37 @@ class SearchView(QWidget):
         limit = int(self.limit_combo.currentText())
 
         with SessionLocal() as session:
-            payload = run_copilot_query(session, query=query, default_limit=limit)
+            payload = run_copilot_query(
+                session,
+                query=query,
+                default_limit=limit,
+                context=self._build_copilot_context(),
+            )
             session.commit()
 
+        self.last_copilot_payload = dict(payload)
+        self.chat_history.append(
+            {
+                "question": query,
+                "title": payload.get("title"),
+                "answer": payload.get("answer"),
+                "intent": payload.get("intent"),
+                "suggestions": list(payload.get("suggestions") or [])[:3],
+            }
+        )
+        self.chat_history = self.chat_history[-6:]
+        self._render_chat_history()
+        self._set_followups(list(payload.get("followups") or [])[:3])
         self.copilot_title_label.setText(safe_text(payload.get("title")))
         self.copilot_answer_label.setText(safe_text(payload.get("answer")))
         self.copilot_next_label.setText(f"Siguiente paso: {safe_text(payload.get('next_step'))}")
+        understanding = dict(payload.get("understanding") or {})
+        understanding_text = safe_text(understanding.get("understanding_text"))
+        confidence = safe_text(understanding.get("confidence"))
+        llm_suffix = " | refinado por LLM" if payload.get("llm_enhanced") else ""
+        self.understanding_label.setText(
+            f"Interpretacion: {understanding_text} | confianza {confidence}{llm_suffix}"
+        )
         self.summary_label.setText(
             f"Copiloto activo sobre '{safe_text(payload.get('query'))}' con lectura {safe_text(payload.get('intent'))}."
         )
@@ -361,6 +458,49 @@ class SearchView(QWidget):
         if search_result:
             self.show_classic_results(True)
             self._apply_search_payload(search_result, query_override="Busqueda general")
+
+        auto_action = str(payload.get("auto_action") or "").strip().lower()
+        if auto_action == "open_map" and suggestions:
+            self.open_selected_in_map()
+        elif auto_action == "open_context" and suggestions:
+            self.open_selected_context()
+        elif auto_action == "execute_action" and suggestions:
+            self.execute_selected_action()
+
+    def _build_copilot_context(self) -> dict:
+        recent_zone_labels: list[str] = []
+        recent_rows: list[dict] = []
+        recent_questions: list[str] = []
+        if self.last_copilot_payload:
+            for row in self.last_copilot_payload.get("suggestions") or []:
+                label = str(row.get("zone_label") or "").strip()
+                if label and label not in recent_zone_labels:
+                    recent_zone_labels.append(label)
+                if row and len(recent_rows) < 5:
+                    recent_rows.append(dict(row))
+
+        for entry in reversed(self.chat_history[-3:]):
+            question = str(entry.get("question") or "").strip()
+            if question:
+                recent_questions.append(question)
+            for row in entry.get("suggestions") or []:
+                if len(recent_rows) >= 5:
+                    break
+                candidate = dict(row)
+                if all(
+                    str(existing.get("event_id") or existing.get("item") or "")
+                    != str(candidate.get("event_id") or candidate.get("item") or "")
+                    for existing in recent_rows
+                ):
+                    recent_rows.append(candidate)
+
+        return {
+            "selected_row": dict(self.selected_copilot_row or {}),
+            "recent_zone_labels": recent_zone_labels,
+            "recent_rows": recent_rows,
+            "recent_questions": recent_questions,
+            "last_intent": safe_text((self.last_copilot_payload or {}).get("intent")),
+        }
 
     def run_search(self) -> None:
         query = self.query_input.text().strip()
