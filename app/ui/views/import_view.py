@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from pathlib import Path
 
@@ -9,11 +11,11 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -32,7 +34,7 @@ from db.session import SessionLocal
 
 
 def safe_text(value) -> str:
-    if value is None:
+    if value is None or value == "":
         return "-"
     return str(value)
 
@@ -65,6 +67,26 @@ class DropFilesTextEdit(QTextEdit):
         super().dropEvent(event)
 
 
+class ImportMetricCard(QGroupBox):
+    def __init__(self, title: str) -> None:
+        super().__init__(title)
+        self.setMinimumHeight(96)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        self.value_label = QLabel("0")
+        self.value_label.setObjectName("MetricValue")
+        layout.addWidget(self.value_label)
+        self.detail_label = QLabel("")
+        self.detail_label.setObjectName("MetricDetail")
+        self.detail_label.setWordWrap(True)
+        layout.addWidget(self.detail_label)
+        layout.addStretch()
+
+    def set_content(self, value: str, detail: str) -> None:
+        self.value_label.setText(value)
+        self.detail_label.setText(detail)
+
+
 class ImportView(QWidget):
     def __init__(self) -> None:
         super().__init__()
@@ -83,80 +105,83 @@ class ImportView(QWidget):
 
         page = QWidget()
         scroll.setWidget(page)
-
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(10, 8, 10, 20)
+        layout.setSpacing(16)
 
-        title = QLabel("Importacion baseline")
-        title.setStyleSheet("font-size: 22px; font-weight: bold;")
+        title = QLabel("Datos base")
+        title.setObjectName("PageTitle")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Sube el CSV o Excel del baseline desde la propia app. Puedes seleccionar ficheros, "
-            "arrastrarlos aqui o dejarlos en la carpeta inbox para importarlos sin pasar por VS Code."
+            "Sube aquí el baseline cuando cambie. Esta pantalla está pensada para reimportar sin fricción, no para un único CSV fijo."
         )
-        subtitle.setStyleSheet("color: #666;")
+        subtitle.setObjectName("PageSubtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        inbox_group = QGroupBox("Carpeta inbox")
-        inbox_layout = QVBoxLayout(inbox_group)
-        self.inbox_path_label = QLabel(str(self.inbox_dir))
-        self.inbox_path_label.setWordWrap(True)
-        self.inbox_help_label = QLabel(
-            "Deja aqui .csv, .xlsx o .xls para importarlos directamente desde la app."
-        )
-        self.inbox_help_label.setStyleSheet("color: #666;")
-        self.inbox_help_label.setWordWrap(True)
+        cards_row = QHBoxLayout()
+        self.selected_card = ImportMetricCard("Seleccionados")
+        self.inbox_card = ImportMetricCard("Pendientes inbox")
+        self.history_card = ImportMetricCard("Último resultado")
+        cards_row.addWidget(self.selected_card, 1)
+        cards_row.addWidget(self.inbox_card, 1)
+        cards_row.addWidget(self.history_card, 1)
+        layout.addLayout(cards_row)
 
-        inbox_buttons = QHBoxLayout()
-        self.open_inbox_button = QPushButton("Abrir carpeta inbox")
-        self.open_inbox_button.clicked.connect(self.open_inbox_folder)
-        self.load_inbox_button = QPushButton("Cargar ficheros inbox")
-        self.load_inbox_button.clicked.connect(self.load_pending_inbox_files)
-        self.import_inbox_button = QPushButton("Importar inbox")
-        self.import_inbox_button.clicked.connect(self.import_pending_inbox_files)
+        action_box = QGroupBox("Subir baseline")
+        action_layout = QVBoxLayout(action_box)
+        action_layout.setSpacing(10)
 
-        inbox_buttons.addWidget(self.open_inbox_button)
-        inbox_buttons.addWidget(self.load_inbox_button)
-        inbox_buttons.addWidget(self.import_inbox_button)
-        inbox_buttons.addStretch()
-
-        inbox_layout.addWidget(self.inbox_path_label)
-        inbox_layout.addWidget(self.inbox_help_label)
-        inbox_layout.addLayout(inbox_buttons)
-        layout.addWidget(inbox_group)
-
-        controls = QHBoxLayout()
+        buttons_row = QHBoxLayout()
         self.select_button = QPushButton("Seleccionar fichero(s)")
         self.select_button.clicked.connect(self.select_files)
-
         self.import_button = QPushButton("Importar seleccionados")
         self.import_button.clicked.connect(self.start_import)
-
-        self.refresh_button = QPushButton("Refrescar historial")
-        self.refresh_button.clicked.connect(self.load_history)
-
         self.delete_checkbox = QCheckBox("Borrar fichero tras importar bien")
         self.delete_checkbox.setChecked(True)
+        buttons_row.addWidget(self.select_button)
+        buttons_row.addWidget(self.import_button)
+        buttons_row.addWidget(self.delete_checkbox)
+        buttons_row.addStretch()
+        action_layout.addLayout(buttons_row)
 
-        controls.addWidget(self.select_button)
-        controls.addWidget(self.import_button)
-        controls.addWidget(self.refresh_button)
-        controls.addWidget(self.delete_checkbox)
-        controls.addStretch()
-
-        layout.addLayout(controls)
-
-        selected_group = QGroupBox("Ficheros seleccionados")
-        selected_layout = QVBoxLayout(selected_group)
         self.selected_box = DropFilesTextEdit(self.handle_dropped_files)
         self.selected_box.setReadOnly(True)
         self.selected_box.setMinimumHeight(120)
         self.selected_box.setPlaceholderText(
-            "Arrastra aqui los CSV/Excel del baseline o usa el selector."
+            "Arrastra aquí los CSV o Excel del baseline, o usa el selector."
         )
-        selected_layout.addWidget(self.selected_box)
-        layout.addWidget(selected_group)
+        action_layout.addWidget(self.selected_box)
+        layout.addWidget(action_box)
+
+        inbox_box = QGroupBox("Inbox automática")
+        inbox_layout = QVBoxLayout(inbox_box)
+        self.inbox_path_label = QLabel(str(self.inbox_dir))
+        self.inbox_path_label.setWordWrap(True)
+        self.inbox_help_label = QLabel(
+            "También puedes dejar ficheros en esta carpeta y cargarlos o importarlos desde aquí."
+        )
+        self.inbox_help_label.setObjectName("MetricDetail")
+        self.inbox_help_label.setWordWrap(True)
+        inbox_layout.addWidget(self.inbox_path_label)
+        inbox_layout.addWidget(self.inbox_help_label)
+
+        inbox_buttons = QHBoxLayout()
+        self.open_inbox_button = QPushButton("Abrir inbox")
+        self.open_inbox_button.setObjectName("GhostButton")
+        self.open_inbox_button.clicked.connect(self.open_inbox_folder)
+        self.load_inbox_button = QPushButton("Cargar pendientes")
+        self.load_inbox_button.setObjectName("GhostButton")
+        self.load_inbox_button.clicked.connect(self.load_pending_inbox_files)
+        self.import_inbox_button = QPushButton("Importar inbox")
+        self.import_inbox_button.clicked.connect(self.import_pending_inbox_files)
+        inbox_buttons.addWidget(self.open_inbox_button)
+        inbox_buttons.addWidget(self.load_inbox_button)
+        inbox_buttons.addWidget(self.import_inbox_button)
+        inbox_buttons.addStretch()
+        inbox_layout.addLayout(inbox_buttons)
+        layout.addWidget(inbox_box)
 
         self.progress_label = QLabel("Listo")
         layout.addWidget(self.progress_label)
@@ -166,21 +191,29 @@ class ImportView(QWidget):
         self.progress_bar.setValue(0)
         layout.addWidget(self.progress_bar)
 
-        history_group = QGroupBox("Historial de importaciones baseline")
-        history_layout = QVBoxLayout(history_group)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
 
-        self.history_table = QTableWidget(0, 10)
+        self._build_history_tab()
+        self._build_log_tab()
+
+        self.load_history()
+        self.refresh_selected_box()
+        self.refresh_summary_cards()
+
+    def _build_history_tab(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        self.history_table = QTableWidget(0, 7)
         self.history_table.setHorizontalHeaderLabels(
             [
                 "Fecha",
                 "Archivo",
-                "Hash",
                 "Estado",
                 "Filas",
-                "Listings nuevos",
-                "Snapshots",
-                "Resueltos Casafari",
-                "Eventos creados",
+                "Listings",
+                "Eventos",
                 "Mensaje",
             ]
         )
@@ -188,20 +221,27 @@ class ImportView(QWidget):
         self.history_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.history_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.history_table.setCornerButtonEnabled(False)
-        self.history_table.setMinimumHeight(170)
-        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.history_table.horizontalHeader().setSectionResizeMode(9, QHeaderView.Stretch)
+        self.history_table.setMinimumHeight(260)
+        layout.addWidget(self.history_table)
 
-        history_layout.addWidget(self.history_table)
-        layout.addWidget(history_group)
+        controls = QHBoxLayout()
+        self.refresh_button = QPushButton("Actualizar historial")
+        self.refresh_button.setObjectName("GhostButton")
+        self.refresh_button.clicked.connect(self.load_history)
+        controls.addWidget(self.refresh_button)
+        controls.addStretch()
+        layout.addLayout(controls)
 
+        self.tabs.addTab(page, "Historial")
+
+    def _build_log_tab(self) -> None:
+        page = QWidget()
+        layout = QVBoxLayout(page)
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMinimumHeight(140)
+        self.log_box.setMinimumHeight(180)
         layout.addWidget(self.log_box)
-
-        self.load_history()
-        self.refresh_selected_box()
+        self.tabs.addTab(page, "Log")
 
     def append_log(self, text: str) -> None:
         self.log_box.append(text)
@@ -211,6 +251,28 @@ class ImportView(QWidget):
             self.selected_box.setPlainText("\n".join(self.selected_files))
         else:
             self.selected_box.clear()
+
+    def refresh_summary_cards(self) -> None:
+        pending = list_pending_baseline_files()
+        self.selected_card.set_content(
+            str(len(self.selected_files)),
+            "ficheros listos para importar",
+        )
+        self.inbox_card.set_content(
+            str(len(pending)),
+            f"inbox: {self.inbox_dir.name}",
+        )
+
+        row_count = self.history_table.rowCount()
+        if row_count > 0:
+            status_item = self.history_table.item(0, 2)
+            file_item = self.history_table.item(0, 1)
+            self.history_card.set_content(
+                safe_text(status_item.text() if status_item else "-"),
+                safe_text(file_item.text() if file_item else "-"),
+            )
+        else:
+            self.history_card.set_content("-", "sin importaciones todavía")
 
     def add_selected_files(self, files: list[str]) -> None:
         unique_paths = []
@@ -226,12 +288,13 @@ class ImportView(QWidget):
             unique_paths.append(str(resolved))
 
         if not unique_paths:
-            self.append_log("No habia ficheros nuevos compatibles para anadir")
+            self.append_log("No había ficheros nuevos compatibles para añadir")
             return
 
         self.selected_files.extend(unique_paths)
         self.refresh_selected_box()
-        self.append_log(f"Anadidos {len(unique_paths)} fichero(s) baseline")
+        self.refresh_summary_cards()
+        self.append_log(f"Añadidos {len(unique_paths)} fichero(s) baseline")
 
     def handle_dropped_files(self, files: list[str]) -> None:
         self.add_selected_files(files)
@@ -252,14 +315,14 @@ class ImportView(QWidget):
         ensure_baseline_inbox_dir()
         try:
             os.startfile(str(self.inbox_dir))
-            self.append_log(f"Abrida carpeta inbox: {self.inbox_dir}")
+            self.append_log(f"Abierta carpeta inbox: {self.inbox_dir}")
         except Exception as exc:
             self.append_log(f"No se pudo abrir la carpeta inbox: {exc}")
 
     def load_pending_inbox_files(self) -> None:
         files = list_pending_baseline_files()
         if not files:
-            self.append_log("Inbox vacia: no hay baselines pendientes")
+            self.append_log("Inbox vacía: no hay baselines pendientes")
             return
         self.add_selected_files(files)
         self.append_log(f"Cargados {len(files)} fichero(s) desde inbox")
@@ -267,7 +330,7 @@ class ImportView(QWidget):
     def import_pending_inbox_files(self) -> None:
         files = list_pending_baseline_files()
         if not files:
-            self.append_log("Inbox vacia: nada que importar")
+            self.append_log("Inbox vacía: nada que importar")
             return
         self.selected_files = []
         self.add_selected_files(files)
@@ -278,30 +341,27 @@ class ImportView(QWidget):
             runs = list_csv_ingestion_runs(session, limit=100)
 
         self.history_table.setRowCount(len(runs))
-
         for row_idx, run in enumerate(runs):
             values = [
                 safe_text(run["started_at"]),
                 safe_text(run["file_name"]),
-                safe_text(run["file_hash"][:12] if run["file_hash"] else "-"),
                 safe_text(run["status"]),
                 safe_text(run["rows_read"]),
                 safe_text(run["listings_created"]),
-                safe_text(run["snapshots_created"]),
-                safe_text(run["casafari_raw_items_resolved"]),
                 safe_text(run["casafari_market_events_created"]),
                 safe_text(run["message"]),
             ]
-
             for col_idx, value in enumerate(values):
                 self.history_table.setItem(row_idx, col_idx, QTableWidgetItem(value))
+        self.history_table.resizeColumnsToContents()
+        self.refresh_summary_cards()
 
     def start_import(self) -> None:
         if self.worker is not None and self.worker.isRunning():
             return
 
         if not self.selected_files:
-            self.append_log("No has seleccionado ningun fichero baseline")
+            self.append_log("No has seleccionado ningún fichero baseline")
             return
 
         self.select_button.setEnabled(False)
@@ -310,8 +370,8 @@ class ImportView(QWidget):
         self.load_inbox_button.setEnabled(False)
         self.import_inbox_button.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-        self.progress_label.setText("Iniciando importacion baseline...")
-        self.append_log("Iniciando importacion baseline")
+        self.progress_label.setText("Iniciando importación baseline...")
+        self.append_log("Iniciando importación baseline")
 
         self.worker = CsvImportWorker(
             file_paths=self.selected_files,
@@ -324,13 +384,11 @@ class ImportView(QWidget):
 
     def on_progress(self, message: str, current: int, total: int) -> None:
         self.progress_label.setText(message)
-
         if total and total > 0:
             self.progress_bar.setRange(0, total)
             self.progress_bar.setValue(min(current, total))
         else:
             self.progress_bar.setRange(0, 0)
-
         self.append_log(f"- {message} ({current}/{total if total else '?'})")
 
     def on_finished_ok(self, result: dict) -> None:
@@ -341,36 +399,29 @@ class ImportView(QWidget):
         self.import_inbox_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)
-        self.progress_label.setText("Importacion baseline completada")
+        self.progress_label.setText("Importación baseline completada")
 
         summary = result["summary"]
-
-        self.append_log("Importacion baseline completada")
+        self.append_log("Importación baseline completada")
         self.append_log(
-            f"Ficheros OK: {summary['files_success']} | "
-            f"Duplicados: {summary['files_skipped_duplicate']} | "
-            f"Error: {summary['files_error']}"
+            f"Ficheros OK: {summary['files_success']} | duplicados: {summary['files_skipped_duplicate']} | error: {summary['files_error']}"
         )
         self.append_log(
-            f"Filas: {summary['rows_read']} | "
-            f"Listings nuevos: {summary['listings_created']} | "
-            f"Snapshots: {summary['snapshots_created']}"
+            f"Filas: {summary['rows_read']} | listings nuevos: {summary['listings_created']} | snapshots: {summary['snapshots_created']}"
         )
         self.append_log(
-            f"Casafari resueltos: {summary['casafari_raw_items_resolved']} | "
-            f"Eventos creados: {summary['casafari_market_events_created']}"
+            f"Casafari resueltos: {summary['casafari_raw_items_resolved']} | eventos creados: {summary['casafari_market_events_created']}"
         )
 
         for file_result in result["files"]:
             self.append_log(
-                f"{file_result.get('file_name')} -> "
-                f"{file_result.get('status')} | "
-                f"{file_result.get('message')}"
+                f"{file_result.get('file_name')} -> {file_result.get('status')} | {file_result.get('message')}"
             )
 
         self.selected_files = []
         self.refresh_selected_box()
         self.load_history()
+        self.refresh_summary_cards()
 
     def on_failed(self, error_text: str) -> None:
         self.select_button.setEnabled(True)
@@ -380,7 +431,7 @@ class ImportView(QWidget):
         self.import_inbox_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Error en importacion baseline")
-
+        self.progress_label.setText("Error en importación baseline")
         self.append_log(f"Error: {error_text}")
         self.load_history()
+        self.refresh_summary_cards()

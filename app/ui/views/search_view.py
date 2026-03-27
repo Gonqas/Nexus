@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
@@ -5,6 +7,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -17,7 +20,7 @@ from db.session import SessionLocal
 
 
 def safe_text(value: object | None) -> str:
-    if value is None:
+    if value is None or value == "":
         return "-"
     return str(value)
 
@@ -35,21 +38,35 @@ class SearchView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(14)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
 
-        title = QLabel("Busqueda avanzada")
-        title.setStyleSheet("font-size: 22px; font-weight: bold;")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        root_layout.addWidget(scroll)
+
+        page = QWidget()
+        scroll.setWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(10, 8, 10, 20)
+        layout.setSpacing(16)
+
+        title = QLabel("Buscar")
+        title.setObjectName("PageTitle")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Busca globalmente y luego entra en la pestana que te interesa. Menos pantallas apiladas, mas foco."
+            "Haz una pregunta corta al dato y luego entra solo en el bloque que te interese. La búsqueda ya no necesita varias pantallas a la vez."
         )
-        subtitle.setStyleSheet("color: #666;")
+        subtitle.setObjectName("PageSubtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        controls = QHBoxLayout()
+        search_box = QGroupBox("Consulta")
+        search_layout = QVBoxLayout(search_box)
+        search_layout.setSpacing(10)
+
+        first_row = QHBoxLayout()
         self.query_input = QLineEdit()
         self.query_input.setPlaceholderText(
             "Ejemplo: calle mayor 10, 699111222, weak_identity, fotocasa"
@@ -66,26 +83,28 @@ class SearchView(QWidget):
         self.search_button = QPushButton("Buscar")
         self.search_button.clicked.connect(self.run_search)
 
-        self.reindex_button = QPushButton("Reindexar FTS5")
+        self.reindex_button = QPushButton("Reindexar")
+        self.reindex_button.setObjectName("GhostButton")
         self.reindex_button.clicked.connect(self.reindex_fts)
 
-        controls.addWidget(QLabel("Query:"))
-        controls.addWidget(self.query_input, 1)
-        controls.addWidget(QLabel("Ambito:"))
-        controls.addWidget(self.section_filter)
-        controls.addWidget(QLabel("Limite:"))
-        controls.addWidget(self.limit_combo)
-        controls.addWidget(self.search_button)
-        controls.addWidget(self.reindex_button)
-        layout.addLayout(controls)
+        first_row.addWidget(QLabel("Buscar"))
+        first_row.addWidget(self.query_input, 1)
+        first_row.addWidget(QLabel("Ámbito"))
+        first_row.addWidget(self.section_filter)
+        first_row.addWidget(QLabel("Límite"))
+        first_row.addWidget(self.limit_combo)
+        first_row.addWidget(self.search_button)
+        first_row.addWidget(self.reindex_button)
+        search_layout.addLayout(first_row)
 
         self.index_status_label = QLabel("FTS5 sin inicializar")
-        self.index_status_label.setStyleSheet("color: #666;")
+        self.index_status_label.setObjectName("MetricDetail")
         self.index_status_label.setWordWrap(True)
-        layout.addWidget(self.index_status_label)
+        search_layout.addWidget(self.index_status_label)
+        layout.addWidget(search_box)
 
-        self.summary_label = QLabel("Sin busqueda todavia")
-        self.summary_label.setStyleSheet("color: #666;")
+        self.summary_label = QLabel("Todavía no has lanzado ninguna búsqueda.")
+        self.summary_label.setObjectName("HeroSummary")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
 
@@ -94,19 +113,19 @@ class SearchView(QWidget):
 
         self.assets_table = self._build_table_tab(
             "Activos",
-            ["Asset", "Tipo", "Direccion", "Barrio", "Distrito", "Listings", "Snippet"],
+            ["Asset", "Tipo", "Dirección", "Barrio", "Distrito", "Listings", "Snippet"],
         )
         self.listings_table = self._build_table_tab(
             "Listings",
-            ["Listing", "Asset", "Portal", "Direccion", "Contacto", "Telefono", "Precio", "Snippet"],
+            ["Listing", "Asset", "Portal", "Dirección", "Contacto", "Teléfono", "Precio", "Snippet"],
         )
         self.raws_table = self._build_table_tab(
             "Raw Casafari",
-            ["Raw", "Fecha", "Estado", "Reason", "Direccion", "Contacto", "Telefono", "Portal", "Snippet"],
+            ["Raw", "Fecha", "Estado", "Motivo", "Dirección", "Contacto", "Teléfono", "Portal", "Snippet"],
         )
         self.events_table = self._build_table_tab(
             "Eventos",
-            ["Evento", "Fecha", "Tipo", "Canal", "Direccion", "Precio", "Snippet"],
+            ["Evento", "Fecha", "Tipo", "Canal", "Dirección", "Precio", "Snippet"],
         )
 
         self.refresh_index_status()
@@ -114,15 +133,12 @@ class SearchView(QWidget):
     def _build_table_tab(self, title: str, headers: list[str]) -> QTableWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        group = QGroupBox(title)
-        group_layout = QVBoxLayout(group)
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
         table.verticalHeader().setVisible(False)
         table.setAlternatingRowColors(True)
         table.setCornerButtonEnabled(False)
-        group_layout.addWidget(table)
-        layout.addWidget(group)
+        layout.addWidget(table)
         self.tabs.addTab(page, title)
         return table
 
@@ -132,7 +148,7 @@ class SearchView(QWidget):
             session.commit()
 
         self.index_status_label.setText(
-            f"Backend={safe_text(status.get('backend'))} | docs={safe_text(status.get('doc_count'))}"
+            f"Índice {safe_text(status.get('backend'))} | documentos {safe_text(status.get('doc_count'))}"
         )
 
     def reindex_fts(self) -> None:
@@ -154,13 +170,13 @@ class SearchView(QWidget):
 
         index_status = payload.get("index_status", {})
         self.index_status_label.setText(
-            f"Backend={safe_text(index_status.get('backend'))} | docs={safe_text(index_status.get('doc_count'))}"
+            f"Índice {safe_text(index_status.get('backend'))} | documentos {safe_text(index_status.get('doc_count'))}"
         )
 
         summary = payload["summary"]
         self.summary_label.setText(
-            f"Resultados para '{payload['query']}': assets={summary['assets']} | listings={summary['listings']} | "
-            f"raws={summary['raws']} | events={summary['events']} | total={summary['total']}"
+            f"Resultados para '{payload['query']}': {summary['total']} en total. "
+            f"Activos {summary['assets']} | listings {summary['listings']} | raws {summary['raws']} | eventos {summary['events']}."
         )
 
         self._load_assets(payload["assets"])

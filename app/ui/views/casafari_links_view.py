@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -10,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -42,11 +45,11 @@ class StatCard(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
         self.value_label = QLabel("0")
-        self.value_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        self.value_label.setObjectName("MetricValue")
         layout.addWidget(self.value_label)
         self.detail_label = QLabel("")
+        self.detail_label.setObjectName("MetricDetail")
         self.detail_label.setWordWrap(True)
-        self.detail_label.setStyleSheet("color: #666;")
         layout.addWidget(self.detail_label)
         layout.addStretch()
 
@@ -63,50 +66,54 @@ class CasafariLinksView(QWidget):
         self.rows: list[dict] = []
         self.selected_row_payload: dict | None = None
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(14)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
 
-        title = QLabel("Consola de revision Casafari")
-        title.setStyleSheet("font-size: 22px; font-weight: bold;")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        root_layout.addWidget(scroll)
+
+        page = QWidget()
+        scroll.setWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(10, 8, 10, 20)
+        layout.setSpacing(16)
+
+        title = QLabel("Casafari")
+        title.setObjectName("PageTitle")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Filtra rapido, revisa solo lo importante y guarda decision manual sin pelearte con una tabla interminable."
+            "Revisa solo los casos que merecen atención. El objetivo aquí no es ver todo, sino decidir rápido qué enlace es fiable y cuál no."
         )
-        subtitle.setStyleSheet("color: #666;")
+        subtitle.setObjectName("PageSubtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        metrics = QGridLayout()
-        metrics.setHorizontalSpacing(14)
-        metrics.setVerticalSpacing(14)
+        cards = QGridLayout()
+        cards.setHorizontalSpacing(14)
+        cards.setVerticalSpacing(14)
 
-        self.raw_card = StatCard("Raw")
-        self.resolved_card = StatCard("Resueltos")
-        self.unresolved_card = StatCard("Sin resolver")
-        self.pending_card = StatCard("Pendientes")
-        self.reviews_card = StatCard("Reviews")
-        self.precision_card = StatCard("Precision")
+        self.raw_card = StatCard("Total raw")
+        self.clear_card = StatCard("Casos claros")
+        self.pending_card = StatCard("Casos a revisar")
+        self.quality_card = StatCard("Precisión")
 
         for idx, card in enumerate(
-            [
-                self.raw_card,
-                self.resolved_card,
-                self.unresolved_card,
-                self.pending_card,
-                self.reviews_card,
-                self.precision_card,
-            ]
+            [self.raw_card, self.clear_card, self.pending_card, self.quality_card]
         ):
-            metrics.addWidget(card, idx // 3, idx % 3)
-        layout.addLayout(metrics)
+            cards.addWidget(card, 0, idx)
+        layout.addLayout(cards)
 
-        self.threshold_label = QLabel("Thresholds: sin muestra")
-        self.threshold_label.setStyleSheet("color: #666;")
-        self.threshold_label.setWordWrap(True)
-        layout.addWidget(self.threshold_label)
+        filters_box = QGroupBox("Filtros")
+        filters_layout = QVBoxLayout(filters_box)
+        filters_layout.setSpacing(10)
 
-        controls = QHBoxLayout()
+        first_row = QHBoxLayout()
+        self.query_input = QLineEdit()
+        self.query_input.setPlaceholderText("Buscar por dirección, teléfono, portal o motivo")
+        self.query_input.returnPressed.connect(self.load_rows)
+
         self.status_filter = QComboBox()
         self.status_filter.addItems(["all", "resolved", "ambiguous", "unresolved", "pending"])
         self.status_filter.currentTextChanged.connect(self.load_rows)
@@ -124,34 +131,41 @@ class CasafariLinksView(QWidget):
         )
         self.focus_filter.currentTextChanged.connect(self.load_rows)
 
-        self.limit_combo = QComboBox()
-        self.limit_combo.addItems(["100", "300", "600"])
-        self.limit_combo.setCurrentText("300")
-        self.limit_combo.currentTextChanged.connect(self.load_rows)
-
-        self.query_input = QLineEdit()
-        self.query_input.setPlaceholderText("Buscar por direccion, telefono, portal o reason")
-        self.query_input.returnPressed.connect(self.load_rows)
-
-        self.refresh_button = QPushButton("Refrescar")
+        self.refresh_button = QPushButton("Actualizar")
+        self.refresh_button.setObjectName("GhostButton")
         self.refresh_button.clicked.connect(self.refresh_all)
 
         self.rerun_button = QPushButton("Reconciliar pendientes")
         self.rerun_button.clicked.connect(self.start_rerun)
 
-        controls.addWidget(QLabel("Estado:"))
-        controls.addWidget(self.status_filter)
-        controls.addWidget(QLabel("Foco:"))
-        controls.addWidget(self.focus_filter)
-        controls.addWidget(QLabel("Limite:"))
-        controls.addWidget(self.limit_combo)
-        controls.addWidget(self.query_input, 1)
-        controls.addWidget(self.refresh_button)
-        controls.addWidget(self.rerun_button)
-        layout.addLayout(controls)
+        first_row.addWidget(QLabel("Buscar"))
+        first_row.addWidget(self.query_input, 1)
+        first_row.addWidget(QLabel("Estado"))
+        first_row.addWidget(self.status_filter)
+        first_row.addWidget(QLabel("Foco"))
+        first_row.addWidget(self.focus_filter)
+        first_row.addWidget(self.refresh_button)
+        first_row.addWidget(self.rerun_button)
+        filters_layout.addLayout(first_row)
+
+        second_row = QHBoxLayout()
+        self.limit_combo = QComboBox()
+        self.limit_combo.addItems(["100", "300", "600"])
+        self.limit_combo.setCurrentText("300")
+        self.limit_combo.currentTextChanged.connect(self.load_rows)
+
+        self.threshold_label = QLabel("Sin muestra suficiente")
+        self.threshold_label.setObjectName("MetricDetail")
+        self.threshold_label.setWordWrap(True)
+
+        second_row.addWidget(QLabel("Límite"))
+        second_row.addWidget(self.limit_combo)
+        second_row.addWidget(self.threshold_label, 1)
+        filters_layout.addLayout(second_row)
+        layout.addWidget(filters_box)
 
         self.summary_label = QLabel("Sin datos")
-        self.summary_label.setStyleSheet("color: #666;")
+        self.summary_label.setObjectName("HeroSummary")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
 
@@ -166,20 +180,9 @@ class CasafariLinksView(QWidget):
         splitter = QSplitter()
         layout.addWidget(splitter, 1)
 
-        self.table = QTableWidget(0, 10)
+        self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
-            [
-                "Fecha",
-                "Tipo",
-                "Zona",
-                "Direccion",
-                "Portal",
-                "Telefono",
-                "Estado",
-                "Banda",
-                "Reason",
-                "Review",
-            ]
+            ["Fecha", "Señal", "Zona", "Dirección", "Portal", "Estado", "Motivo"]
         )
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -208,9 +211,9 @@ class CasafariLinksView(QWidget):
 
     def _build_case_tab(self) -> None:
         page = QWidget()
-        layout = QVBoxLayout(page)
-        self.case_group = QGroupBox("Caso seleccionado")
-        form = QFormLayout(self.case_group)
+        layout = QFormLayout(page)
+        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self.lbl_case = QLabel("Selecciona una fila")
         self.lbl_case.setWordWrap(True)
@@ -228,23 +231,21 @@ class CasafariLinksView(QWidget):
         self.lbl_review = QLabel("-")
         self.lbl_review.setWordWrap(True)
 
-        form.addRow("Caso", self.lbl_case)
-        form.addRow("Estado", self.lbl_status)
-        form.addRow("Reason", self.lbl_reason)
-        form.addRow("Telefono", self.lbl_phone)
-        form.addRow("Precio", self.lbl_price)
-        form.addRow("Listing", self.lbl_listing)
-        form.addRow("Nota", self.lbl_note)
-        form.addRow("Ultimo review", self.lbl_review)
-        layout.addWidget(self.case_group)
-        layout.addStretch()
+        layout.addRow("Caso", self.lbl_case)
+        layout.addRow("Estado", self.lbl_status)
+        layout.addRow("Qué falla o qué encaja", self.lbl_reason)
+        layout.addRow("Teléfono", self.lbl_phone)
+        layout.addRow("Precio", self.lbl_price)
+        layout.addRow("Destino propuesto", self.lbl_listing)
+        layout.addRow("Nota del sistema", self.lbl_note)
+        layout.addRow("Último review", self.lbl_review)
         self.tabs.addTab(page, "Caso")
 
     def _build_review_tab(self) -> None:
         page = QWidget()
-        layout = QVBoxLayout(page)
-        self.review_group = QGroupBox("Review manual")
-        form = QFormLayout(self.review_group)
+        layout = QFormLayout(page)
+        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self.review_label_combo = QComboBox()
         self.review_label_combo.addItems(["match", "no_match", "uncertain"])
@@ -253,21 +254,19 @@ class CasafariLinksView(QWidget):
         self.review_reviewer_input.setPlaceholderText("Tu nombre o alias")
 
         self.review_reason_input = QTextEdit()
-        self.review_reason_input.setMinimumHeight(110)
+        self.review_reason_input.setMinimumHeight(120)
         self.review_reason_input.setPlaceholderText(
-            "Por que este caso es correcto, incorrecto o incierto"
+            "Explica en una frase por qué este caso es correcto, incorrecto o dudoso"
         )
 
         self.save_review_button = QPushButton("Guardar review")
         self.save_review_button.clicked.connect(self.save_review)
 
-        form.addRow("Label", self.review_label_combo)
-        form.addRow("Reviewer", self.review_reviewer_input)
-        form.addRow("Razon", self.review_reason_input)
-        form.addRow("", self.save_review_button)
-        layout.addWidget(self.review_group)
-        layout.addStretch()
-        self.tabs.addTab(page, "Review")
+        layout.addRow("Decisión", self.review_label_combo)
+        layout.addRow("Reviewer", self.review_reviewer_input)
+        layout.addRow("Motivo", self.review_reason_input)
+        layout.addRow("", self.save_review_button)
+        self.tabs.addTab(page, "Review manual")
 
     def _build_log_tab(self) -> None:
         page = QWidget()
@@ -286,20 +285,27 @@ class CasafariLinksView(QWidget):
             review_summary = get_casafari_matching_review_summary(session)
 
         self.raw_card.set_content(str(stats["total_raw"]), f"links={stats['total_links']}")
-        self.resolved_card.set_content(str(stats["resolved"]), f"ambiguos={stats['ambiguous']}")
-        self.unresolved_card.set_content(str(stats["unresolved"]), "casos por cerrar")
-        self.pending_card.set_content(str(stats["pending"]), "todavia sin pasar")
+        self.clear_card.set_content(
+            str(stats["resolved"]),
+            f"ambiguos={stats['ambiguous']}",
+        )
+        self.pending_card.set_content(
+            str(stats["unresolved"]),
+            f"pendientes={stats['pending']}",
+        )
 
         metrics = review_summary["metrics"]
-        self.reviews_card.set_content(str(metrics["reviews_total"]), f"accuracy {metrics['accuracy'] * 100:.1f}%")
-        self.precision_card.set_content(f"{metrics['precision'] * 100:.1f}%", f"recall {metrics['recall'] * 100:.1f}%")
+        self.quality_card.set_content(
+            f"{metrics['precision'] * 100:.1f}%",
+            f"recall {metrics['recall'] * 100:.1f}% | reviews {metrics['reviews_total']}",
+        )
 
         diagnostics = review_summary["threshold_diagnostics"]
         if diagnostics:
-            bits = [f"{row['band']}: {row['recommendation']}" for row in diagnostics[:3]]
+            bits = [f"{row['band']}: {row['recommendation']}" for row in diagnostics[:2]]
             self.threshold_label.setText("Thresholds: " + " | ".join(bits))
         else:
-            self.threshold_label.setText("Thresholds: sin muestra")
+            self.threshold_label.setText("Thresholds: sin muestra suficiente")
 
     def load_rows(self) -> None:
         with SessionLocal() as session:
@@ -319,19 +325,18 @@ class CasafariLinksView(QWidget):
                 safe_text(row["zone_like_label"] or row["address_precision"]),
                 safe_text(row["address_raw"]),
                 safe_text(row["portal"]),
-                safe_text(row["contact_phone"]),
                 safe_text(row["match_status"]),
-                safe_text(row["match_confidence_band"]),
                 safe_text(row["reason_taxonomy"]),
-                safe_text(row["latest_review_label"]),
             ]
             for col_idx, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                if col_idx == 5:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row_idx, col_idx, item)
 
         self.table.resizeColumnsToContents()
         self.summary_label.setText(
-            f"{len(self.rows)} casos visibles | estado={self.status_filter.currentText()} | foco={self.focus_filter.currentText()}"
+            f"{len(self.rows)} casos visibles con estado '{self.status_filter.currentText()}' y foco '{self.focus_filter.currentText()}'."
         )
 
         if self.rows:
@@ -352,22 +357,22 @@ class CasafariLinksView(QWidget):
         self.selected_row_payload = row
 
         self.lbl_case.setText(
-            f"raw={safe_text(row['raw_history_item_id'])} | {safe_text(row['event_type_guess'])} | {safe_text(row['address_raw'])}"
+            f"raw {safe_text(row['raw_history_item_id'])} | {safe_text(row['event_type_guess'])}\n{safe_text(row['address_raw'])}"
         )
         self.lbl_status.setText(
-            f"{safe_text(row['match_status'])} | banda={safe_text(row['match_confidence_band'])} | score={safe_text(row['match_score'])}"
+            f"{safe_text(row['match_status'])} | banda {safe_text(row['match_confidence_band'])} | score {safe_text(row['match_score'])}"
         )
         self.lbl_reason.setText(
-            f"{safe_text(row['reason_taxonomy'])} | {safe_text(row['address_precision'])}"
+            f"{safe_text(row['reason_taxonomy'])} | dirección {safe_text(row['address_precision'])}"
         )
         self.lbl_phone.setText(
-            f"{safe_text(row['contact_phone'])} | perfil={safe_text(row['phone_profile'])} | listings={safe_text(row['phone_listing_count'])}"
+            f"{safe_text(row['contact_phone'])} | perfil {safe_text(row['phone_profile'])} | listings {safe_text(row['phone_listing_count'])}"
         )
         self.lbl_price.setText(
-            f"actual={safe_text(row['current_price_eur'])} | previa={safe_text(row['previous_price_eur'])} | confianza={safe_text(row['price_confidence'])}"
+            f"Actual {safe_text(row['current_price_eur'])} | previa {safe_text(row['previous_price_eur'])} | confianza {safe_text(row['price_confidence'])}"
         )
         self.lbl_listing.setText(
-            f"{safe_text(row['listing_label'])} | listing_id={safe_text(row['listing_id'])}"
+            f"{safe_text(row['listing_label'])} | listing_id {safe_text(row['listing_id'])}"
         )
         self.lbl_note.setText(safe_text(row["match_note"]))
 
@@ -421,8 +426,7 @@ class CasafariLinksView(QWidget):
             )
 
         self.append_log(
-            f"ok Review guardado | raw={safe_text(row.get('raw_history_item_id'))} | "
-            f"label={saved['review_label']} | reviewer={safe_text(saved['reviewer'])}"
+            f"ok Review guardado | raw={safe_text(row.get('raw_history_item_id'))} | label={saved['review_label']}"
         )
         self.refresh_all()
 
@@ -433,7 +437,7 @@ class CasafariLinksView(QWidget):
         self.rerun_button.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         self.progress_label.setText("Reconciliando pendientes...")
-        self.append_log("-> Reintentando reconciliacion Casafari")
+        self.append_log("-> Reintentando reconciliación Casafari")
 
         self.worker = CasafariReconcileWorker(limit=5000)
         self.worker.finished_ok.connect(self.on_rerun_ok)
@@ -444,12 +448,9 @@ class CasafariLinksView(QWidget):
         self.rerun_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)
-        self.progress_label.setText("Reconciliacion completada")
+        self.progress_label.setText("Reconciliación completada")
         self.append_log(
-            f"ok Reconciliacion | procesados={result['raw_items_processed']} | "
-            f"resueltos={result['raw_items_resolved']} | "
-            f"ambiguos={result['raw_items_ambiguous']} | "
-            f"unresolved={result['raw_items_unresolved']}"
+            f"ok Reconciliación | procesados={result['raw_items_processed']} | resueltos={result['raw_items_resolved']} | ambiguos={result['raw_items_ambiguous']} | unresolved={result['raw_items_unresolved']}"
         )
         self.refresh_all()
 
@@ -457,6 +458,6 @@ class CasafariLinksView(QWidget):
         self.rerun_button.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
-        self.progress_label.setText("Error en reconciliacion")
+        self.progress_label.setText("Error en reconciliación")
         self.append_log(f"x Error: {error_text}")
         self.refresh_all()
