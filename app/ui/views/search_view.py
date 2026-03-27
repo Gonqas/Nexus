@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.services.copilot_service import run_copilot_query
 from core.services.search_service import ensure_search_index, search_payload
 from db.session import SessionLocal
 
@@ -35,8 +37,12 @@ def safe_money(value: object | None) -> str:
 
 
 class SearchView(QWidget):
+    open_context_requested = Signal(dict)
+
     def __init__(self) -> None:
         super().__init__()
+        self._has_loaded = False
+        self.copilot_rows: list[dict] = []
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -84,6 +90,9 @@ class SearchView(QWidget):
         self.search_button = QPushButton("Buscar")
         self.search_button.clicked.connect(self.run_search)
 
+        self.copilot_button = QPushButton("Copiloto")
+        self.copilot_button.clicked.connect(self.run_copilot)
+
         self.reindex_button = QPushButton("Reindexar")
         self.reindex_button.setObjectName("GhostButton")
         self.reindex_button.clicked.connect(self.reindex_fts)
@@ -94,6 +103,7 @@ class SearchView(QWidget):
         first_row.addWidget(self.section_filter)
         first_row.addWidget(QLabel("Límite"))
         first_row.addWidget(self.limit_combo)
+        first_row.addWidget(self.copilot_button)
         first_row.addWidget(self.search_button)
         first_row.addWidget(self.reindex_button)
         search_layout.addLayout(first_row)
@@ -108,6 +118,41 @@ class SearchView(QWidget):
         self.summary_label.setObjectName("HeroSummary")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
+
+        self.copilot_box = QGroupBox("Copiloto")
+        copilot_layout = QVBoxLayout(self.copilot_box)
+        copilot_layout.setSpacing(8)
+
+        self.copilot_title_label = QLabel("Todavia no has preguntado al copiloto.")
+        self.copilot_title_label.setObjectName("SectionLabel")
+        copilot_layout.addWidget(self.copilot_title_label)
+
+        self.copilot_answer_label = QLabel(
+            "Haz preguntas como 'barrios con transformacion', 'oportunidades con bajada de precio' o 'casafari weak identity'."
+        )
+        self.copilot_answer_label.setWordWrap(True)
+        copilot_layout.addWidget(self.copilot_answer_label)
+
+        self.copilot_next_label = QLabel("-")
+        self.copilot_next_label.setObjectName("MetricDetail")
+        self.copilot_next_label.setWordWrap(True)
+        copilot_layout.addWidget(self.copilot_next_label)
+
+        self.copilot_table = QTableWidget(0, 4)
+        self.copilot_table.setHorizontalHeaderLabels(["Tipo", "Item", "Por que", "Accion"])
+        self.copilot_table.verticalHeader().setVisible(False)
+        self.copilot_table.setAlternatingRowColors(True)
+        self.copilot_table.setCornerButtonEnabled(False)
+        self.copilot_table.setMinimumHeight(180)
+        self.copilot_table.itemSelectionChanged.connect(self.on_copilot_row_selected)
+        copilot_layout.addWidget(self.copilot_table)
+
+        self.open_context_button = QPushButton("Abrir contexto")
+        self.open_context_button.setObjectName("GhostButton")
+        self.open_context_button.setEnabled(False)
+        self.open_context_button.clicked.connect(self.open_selected_context)
+        copilot_layout.addWidget(self.open_context_button)
+        layout.addWidget(self.copilot_box)
 
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
@@ -129,7 +174,10 @@ class SearchView(QWidget):
             ["Evento", "Fecha", "Tipo", "Canal", "Dirección", "Precio", "Snippet"],
         )
 
-        self.refresh_index_status()
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
+        self.refresh_index_status(force_rebuild=force)
 
     def _build_table_tab(self, title: str, headers: list[str]) -> QTableWidget:
         page = QWidget()
@@ -144,6 +192,7 @@ class SearchView(QWidget):
         return table
 
     def refresh_index_status(self, *, force_rebuild: bool = False) -> None:
+        self._has_loaded = True
         with SessionLocal() as session:
             status = ensure_search_index(session, force_rebuild=force_rebuild)
             session.commit()
@@ -154,6 +203,68 @@ class SearchView(QWidget):
 
     def reindex_fts(self) -> None:
         self.refresh_index_status(force_rebuild=True)
+
+    def on_copilot_row_selected(self) -> None:
+        row_idx = self.copilot_table.currentRow()
+        enabled = 0 <= row_idx < len(self.copilot_rows)
+        self.open_context_button.setEnabled(enabled)
+
+    def open_selected_context(self) -> None:
+        row_idx = self.copilot_table.currentRow()
+        if row_idx < 0 or row_idx >= len(self.copilot_rows):
+            return
+        payload = dict(self.copilot_rows[row_idx])
+        self.open_context_requested.emit(payload)
+
+    def run_copilot(self) -> None:
+        query = self.query_input.text().strip()
+        limit = int(self.limit_combo.currentText())
+
+        with SessionLocal() as session:
+            payload = run_copilot_query(session, query=query, default_limit=limit)
+            session.commit()
+
+        self.copilot_title_label.setText(safe_text(payload.get("title")))
+        self.copilot_answer_label.setText(safe_text(payload.get("answer")))
+        self.copilot_next_label.setText(f"Siguiente paso: {safe_text(payload.get('next_step'))}")
+        self.summary_label.setText(
+            f"Copiloto: {safe_text(payload.get('intent'))} | consulta '{safe_text(payload.get('query'))}'."
+        )
+
+        suggestions = payload.get("suggestions") or []
+        self.copilot_rows = list(suggestions)
+        self.copilot_table.setRowCount(len(suggestions))
+        for row_idx, row in enumerate(suggestions):
+            values = [
+                safe_text(row.get("tipo")),
+                safe_text(row.get("item")),
+                safe_text(row.get("por_que")),
+                safe_text(row.get("accion")),
+            ]
+            for col_idx, value in enumerate(values):
+                self.copilot_table.setItem(row_idx, col_idx, QTableWidgetItem(value))
+        self.copilot_table.resizeColumnsToContents()
+        if suggestions:
+            self.copilot_table.selectRow(0)
+            self.open_context_button.setEnabled(True)
+        else:
+            self.open_context_button.setEnabled(False)
+
+        search_result = payload.get("search_payload")
+        if search_result:
+            index_status = search_result.get("index_status", {})
+            self.index_status_label.setText(
+                f"Ãndice {safe_text(index_status.get('backend'))} | documentos {safe_text(index_status.get('doc_count'))}"
+            )
+            summary = search_result["summary"]
+            self.summary_label.setText(
+                f"Busqueda general: {summary['total']} resultados. "
+                f"Activos {summary['assets']} | listings {summary['listings']} | raws {summary['raws']} | eventos {summary['events']}."
+            )
+            self._load_assets(search_result["assets"])
+            self._load_listings(search_result["listings"])
+            self._load_raws(search_result["raws"])
+            self._load_events(search_result["events"])
 
     def run_search(self) -> None:
         query = self.query_input.text().strip()

@@ -36,6 +36,7 @@ class ZonesView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._has_loaded = False
         self.rows: list[dict] = []
 
         layout = QVBoxLayout(self)
@@ -148,9 +149,13 @@ class ZonesView(QWidget):
 
         layout.addWidget(splitter)
 
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
         self.load_data()
 
     def load_data(self) -> None:
+        self._has_loaded = True
         with SessionLocal() as session:
             self.rows = get_zone_intelligence_v2(session, window_days=14)
 

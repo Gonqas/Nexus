@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import monotonic
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -75,35 +76,35 @@ class MainWindow(QMainWindow):
             PageDef(
                 "dashboard",
                 "Resumen",
-                "Vista corta del estado del sistema: base, Casafari, geografía y señales clave.",
+                "Vista corta del estado del sistema: base, Casafari, geografia y senales clave.",
                 "Trabajo diario",
                 DashboardView,
             ),
             PageDef(
                 "queue",
                 "Oportunidades",
-                "Lista priorizada para decidir qué revisar o mover hoy.",
+                "Lista priorizada para decidir que revisar o mover hoy.",
                 "Trabajo diario",
                 OpportunityQueueView,
             ),
             PageDef(
                 "radar",
                 "Zonas",
-                "Lectura territorial simple para detectar dónde hay señal y dónde no.",
+                "Lectura territorial simple para detectar donde hay senal y donde no.",
                 "Trabajo diario",
                 RadarView,
             ),
             PageDef(
                 "map",
                 "Mapa",
-                "Contexto espacial para pasar de la lista a una lectura de zona rápida.",
+                "Contexto espacial para pasar de la lista a una lectura de zona rapida.",
                 "Trabajo diario",
                 MapView,
             ),
             PageDef(
                 "search",
                 "Buscar",
-                "Búsqueda transversal por dirección, teléfono, portal o texto libre.",
+                "Busqueda transversal por direccion, telefono, portal o texto libre.",
                 "Fuentes y datos",
                 SearchView,
             ),
@@ -117,7 +118,7 @@ class MainWindow(QMainWindow):
             PageDef(
                 "casafari",
                 "Casafari",
-                "Revisión del matching y de los casos que todavía no quedan claros.",
+                "Revision del matching y de los casos que todavia no quedan claros.",
                 "Fuentes y datos",
                 CasafariLinksView,
             ),
@@ -137,8 +138,8 @@ class MainWindow(QMainWindow):
             ),
             PageDef(
                 "sync",
-                "Sincronización",
-                "Control de salud del scraping, login y cobertura del último delta.",
+                "Sincronizacion",
+                "Control de salud del scraping, login y cobertura del ultimo delta.",
                 "Sistema",
                 SyncView,
             ),
@@ -148,6 +149,9 @@ class MainWindow(QMainWindow):
         self.page_placeholders: list[QWidget] = [QWidget() for _ in self.page_defs]
         self.page_index_by_key = {page.key: idx for idx, page in enumerate(self.page_defs)}
         self.nav_buttons: list[QPushButton] = []
+        self._shell_metrics_cache: dict | None = None
+        self._shell_metrics_loaded_at = 0.0
+        self._shell_metrics_ttl_s = 5.0
 
         shell = QWidget()
         shell.setObjectName("AppRoot")
@@ -213,7 +217,7 @@ class MainWindow(QMainWindow):
         status_layout.addWidget(status_badge, 0, Qt.AlignmentFlag.AlignLeft)
 
         status_text = QLabel(
-            "Primero se entiende qué pasa. Después se abre detalle. Lo avanzado no se mezcla con lo básico."
+            "Primero se entiende que pasa. Despues se abre detalle. Lo avanzado no se mezcla con lo basico."
         )
         status_text.setObjectName("SidebarFooter")
         status_text.setWordWrap(True)
@@ -280,7 +284,7 @@ class MainWindow(QMainWindow):
 
         self.refresh_shell_button = QPushButton("Actualizar")
         self.refresh_shell_button.setObjectName("GhostButton")
-        self.refresh_shell_button.clicked.connect(self.refresh_shell_metrics)
+        self.refresh_shell_button.clicked.connect(lambda: self.refresh_shell_metrics(force=True))
         header.addWidget(self.refresh_shell_button, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
@@ -321,6 +325,8 @@ class MainWindow(QMainWindow):
             widget.open_in_map_requested.connect(self._open_map_with_context)
         if page_key == "queue" and isinstance(widget, OpportunityQueueView):
             widget.open_in_map_requested.connect(self._open_map_with_context)
+        if page_key == "search" and isinstance(widget, SearchView):
+            widget.open_context_requested.connect(self._open_copilot_context)
 
         return widget
 
@@ -350,6 +356,60 @@ class MainWindow(QMainWindow):
             window_days=payload.get("window_days"),
         )
 
+    def _open_copilot_context(self, payload: dict) -> None:
+        target_view = str(payload.get("target_view") or "").strip().lower()
+
+        if target_view == "radar":
+            page_index = self.page_index_by_key.get("radar")
+            if page_index is None:
+                return
+            self._activate_page(page_index)
+            radar_view = self._get_page_widget("radar", RadarView)
+            if radar_view is not None:
+                radar_view.focus_context(
+                    zone_label=payload.get("zone_label"),
+                    window_days=14,
+                )
+            return
+
+        if target_view == "queue":
+            page_index = self.page_index_by_key.get("queue")
+            if page_index is None:
+                return
+            self._activate_page(page_index)
+            queue_view = self._get_page_widget("queue", OpportunityQueueView)
+            if queue_view is not None:
+                queue_view.focus_context(
+                    event_id=payload.get("event_id"),
+                    zone_label=payload.get("zone_label"),
+                    microzone_label=payload.get("microzone_label"),
+                    window_days=14,
+                )
+            return
+
+        if target_view == "casafari":
+            page_index = self.page_index_by_key.get("casafari")
+            if page_index is None:
+                return
+            self._activate_page(page_index)
+            casafari_view = self._get_page_widget("casafari", CasafariLinksView)
+            if casafari_view is not None:
+                casafari_view.focus_context(
+                    query_text=payload.get("query_text"),
+                    focus_filter=payload.get("focus_filter"),
+                )
+            return
+
+        if payload.get("zone_label") or payload.get("microzone_label") or payload.get("event_id"):
+            self._open_map_with_context(
+                {
+                    "zone_label": payload.get("zone_label"),
+                    "microzone_label": payload.get("microzone_label"),
+                    "event_id": payload.get("event_id"),
+                    "window_days": 14,
+                }
+            )
+
     def _activate_page(self, index: int) -> None:
         self._ensure_page(index)
         self.stack.setCurrentIndex(index)
@@ -358,24 +418,43 @@ class MainWindow(QMainWindow):
         self.shell_subtitle.setText(page.subtitle)
         self.shell_badge.setText(page.nav_group)
         self.shell_hint.setText(
-            "Empieza por la lectura corta. Usa filtros para centrarte y abre detalle solo cuando ya sabes qué estás buscando."
+            "Empieza por la lectura corta. Usa filtros para centrarte y abre detalle solo cuando ya sabes que estas buscando."
         )
 
         for idx, button in enumerate(self.nav_buttons):
             button.setChecked(idx == index)
 
         self.refresh_shell_metrics()
+        QTimer.singleShot(0, lambda idx=index: self._ensure_page_loaded(idx))
 
-    def refresh_shell_metrics(self) -> None:
-        try:
-            with SessionLocal() as session:
-                stats = get_dashboard_stats(session)
-        except Exception as exc:
-            self.metric_base.set_content("-", "Sin lectura de base")
-            self.metric_market.set_content("-", "Sin lectura de mercado")
-            self.metric_coverage.set_content("-", "Sin lectura geográfica")
-            self.metric_sync.set_content("error", str(exc))
+    def _ensure_page_loaded(self, index: int) -> None:
+        widget = self.page_widgets[index]
+        if widget is None:
             return
+        ensure_loaded = getattr(widget, "ensure_loaded", None)
+        if callable(ensure_loaded):
+            ensure_loaded()
+
+    def refresh_shell_metrics(self, *, force: bool = False) -> None:
+        now = monotonic()
+        if (
+            not force
+            and self._shell_metrics_cache is not None
+            and (now - self._shell_metrics_loaded_at) < self._shell_metrics_ttl_s
+        ):
+            stats = self._shell_metrics_cache
+        else:
+            try:
+                with SessionLocal() as session:
+                    stats = get_dashboard_stats(session)
+            except Exception as exc:
+                self.metric_base.set_content("-", "Sin lectura de base")
+                self.metric_market.set_content("-", "Sin lectura de mercado")
+                self.metric_coverage.set_content("-", "Sin lectura geografica")
+                self.metric_sync.set_content("error", str(exc))
+                return
+            self._shell_metrics_cache = stats
+            self._shell_metrics_loaded_at = now
 
         assets_total = int(stats.get("assets") or 0)
         coords_total = int(stats.get("assets_with_geo_point") or 0)
@@ -399,5 +478,5 @@ class MainWindow(QMainWindow):
         )
         self.metric_sync.set_content(
             sync_status,
-            f"{stats.get('last_sync_item_count', 0)} items en el último sync",
+            f"{stats.get('last_sync_item_count', 0)} items en el ultimo sync",
         )

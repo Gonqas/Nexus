@@ -112,6 +112,7 @@ class RadarView(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._has_loaded = False
         self.selected_row_payload: dict | None = None
 
         root_layout = QVBoxLayout(self)
@@ -221,6 +222,9 @@ class RadarView(QWidget):
         ):
             table.row_selected.connect(self.on_table_row_selected)
 
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
         self.load_data()
 
     def _limit(self) -> int:
@@ -243,6 +247,13 @@ class RadarView(QWidget):
         self.selected_row_payload = row
         self.open_map_button.setEnabled(True)
 
+    def focus_context(self, *, zone_label: str | None = None, window_days: int | None = None) -> None:
+        if window_days is not None:
+            self.window_combo.setCurrentText(str(window_days))
+        if zone_label:
+            self.search_input.setText(str(zone_label))
+        self.ensure_loaded(force=True)
+
     def open_selected_in_map(self) -> None:
         row = self.selected_row_payload
         if not row:
@@ -258,6 +269,7 @@ class RadarView(QWidget):
         self.open_in_map_requested.emit(payload)
 
     def load_data(self) -> None:
+        self._has_loaded = True
         window_days = int(self.window_combo.currentText())
 
         with SessionLocal() as session:

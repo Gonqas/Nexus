@@ -95,6 +95,7 @@ class DashboardTablePanel(QGroupBox):
 class DashboardView(QWidget):
     def __init__(self) -> None:
         super().__init__()
+        self._has_loaded = False
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -181,6 +182,10 @@ class DashboardView(QWidget):
         self._build_territory_tab()
         self._build_system_tab()
 
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
+        self._has_loaded = True
         self.refresh()
 
     def _build_overview_tab(self) -> None:
@@ -305,6 +310,7 @@ class DashboardView(QWidget):
         return int(self.limit_combo.currentText())
 
     def refresh(self) -> None:
+        self._has_loaded = True
         with SessionLocal() as session:
             stats = get_dashboard_stats(session)
 

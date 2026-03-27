@@ -91,6 +91,7 @@ class ImportView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._has_loaded = False
         self.worker: CsvImportWorker | None = None
         self.selected_files: list[str] = []
         self.inbox_dir = ensure_baseline_inbox_dir()
@@ -198,7 +199,6 @@ class ImportView(QWidget):
         self._build_history_tab()
         self._build_log_tab()
 
-        self.load_history()
         self.refresh_selected_box()
         self.refresh_summary_cards()
 
@@ -246,6 +246,11 @@ class ImportView(QWidget):
 
     def append_log(self, text: str) -> None:
         self.log_box.append(text)
+
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
+        self.load_history()
 
     def refresh_selected_box(self) -> None:
         if self.selected_files:
@@ -338,6 +343,7 @@ class ImportView(QWidget):
         self.start_import()
 
     def load_history(self) -> None:
+        self._has_loaded = True
         with SessionLocal() as session:
             runs = list_csv_ingestion_runs(session, limit=100)
 

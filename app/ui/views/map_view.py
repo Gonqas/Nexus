@@ -77,6 +77,7 @@ class MapView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._has_loaded = False
         self.payload: dict | None = None
         self.selected_event_id: int | None = None
         self.selected_microzone_label: str | None = None
@@ -266,6 +267,9 @@ class MapView(QWidget):
         splitter.addWidget(right_panel)
         splitter.setSizes([1120, 560])
 
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
         self.load_data()
 
     def _window_days(self) -> int:
@@ -278,6 +282,7 @@ class MapView(QWidget):
         return float(text)
 
     def load_data(self) -> None:
+        self._has_loaded = True
         self.selected_event_id = None
         self.selected_microzone_label = None
         self.selected_zone_label = None
@@ -305,6 +310,7 @@ class MapView(QWidget):
         event_id: int | None = None,
         window_days: int | None = None,
     ) -> None:
+        self._has_loaded = True
         if window_days is not None:
             self.window_combo.setCurrentText(str(window_days))
 

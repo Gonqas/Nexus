@@ -71,6 +71,7 @@ class OpportunityQueueView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._has_loaded = False
         self.all_rows: list[dict] = []
         self.filtered_rows: list[dict] = []
         self.visible_rows: list[dict] = []
@@ -249,6 +250,9 @@ class OpportunityQueueView(QWidget):
         splitter.addWidget(right_panel)
         splitter.setSizes([960, 580])
 
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
         self.load_data()
 
     def _build_summary_tab(self) -> None:
@@ -349,6 +353,7 @@ class OpportunityQueueView(QWidget):
         return float(text)
 
     def load_data(self) -> None:
+        self._has_loaded = True
         self.selected_group_key = None
 
         with SessionLocal() as session:
@@ -475,6 +480,30 @@ class OpportunityQueueView(QWidget):
         if row_idx < 0 or row_idx >= len(self.visible_rows):
             return
         self.load_detail(self.visible_rows[row_idx]["event_id"])
+
+    def focus_context(
+        self,
+        *,
+        event_id: int | None = None,
+        zone_label: str | None = None,
+        microzone_label: str | None = None,
+        window_days: int | None = None,
+    ) -> None:
+        if window_days is not None:
+            self.window_combo.setCurrentText(str(window_days))
+        query = microzone_label or zone_label or ""
+        if query:
+            self.search_input.setText(str(query))
+        self.ensure_loaded(force=True)
+
+        if event_id is None:
+            return
+
+        for row_idx, row in enumerate(self.visible_rows):
+            if row.get("event_id") == event_id:
+                self.table.selectRow(row_idx)
+                self.load_detail(event_id)
+                return
 
     def load_detail(self, event_id: int) -> None:
         with SessionLocal() as session:

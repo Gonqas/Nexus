@@ -416,6 +416,24 @@ class CasafariLinksView(QWidget):
         self.lbl_review.setText("-")
         self.review_reason_input.clear()
 
+    def focus_context(
+        self,
+        *,
+        query_text: str | None = None,
+        focus_filter: str | None = None,
+    ) -> None:
+        if query_text is not None:
+            self.query_input.setText(str(query_text))
+        if focus_filter:
+            idx = self.focus_filter.findText(str(focus_filter))
+            if idx >= 0:
+                self.focus_filter.setCurrentIndex(idx)
+            elif focus_filter in {"weak_identity", "price_conflict", "poor_address", "repeated_phone"}:
+                idx = self.focus_filter.findText(str(focus_filter))
+                if idx >= 0:
+                    self.focus_filter.setCurrentIndex(idx)
+        self.refresh_all()
+
     def refresh_all(self) -> None:
         self.load_stats()
         self.load_rows()

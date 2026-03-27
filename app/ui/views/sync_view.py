@@ -52,6 +52,7 @@ class SyncView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._has_loaded = False
         self.session_worker: CasafariSessionWorker | None = None
         self.worker: CasafariSyncWorker | None = None
         self.reconcile_worker: CasafariReconcileWorker | None = None
@@ -141,6 +142,9 @@ class SyncView(QWidget):
         self._build_runtime_tab()
         self._build_log_tab()
 
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
         self.load_status()
 
     def _build_status_tab(self) -> None:
@@ -228,6 +232,7 @@ class SyncView(QWidget):
         self.log_box.append(text)
 
     def load_status(self) -> None:
+        self._has_loaded = True
         with SessionLocal() as session:
             status = get_sync_status(session)
 

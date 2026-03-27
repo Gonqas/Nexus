@@ -45,6 +45,7 @@ class AssetsView(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._has_loaded = False
         self.rows = []
 
         layout = QVBoxLayout(self)
@@ -145,9 +146,13 @@ class AssetsView(QWidget):
         splitter.addWidget(detail_widget)
         splitter.setSizes([1050, 630])
 
+    def ensure_loaded(self, *, force: bool = False) -> None:
+        if self._has_loaded and not force:
+            return
         self.load_data()
 
     def load_data(self) -> None:
+        self._has_loaded = True
         with SessionLocal() as session:
             assets = get_assets_with_relations(session, limit=300)
 
