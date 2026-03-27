@@ -18,6 +18,7 @@ from core.config.settings import (
     CASAFARI_HISTORY_BASE_URL,
     CASAFARI_MAX_PAGES_PER_SYNC,
     CASAFARI_PAGE_CHANGE_MAX_WAIT_MS,
+    CASAFARI_PROFILE_DIR,
     CASAFARI_STORAGE_STATE_PATH,
     CASAFARI_SYNC_OVERLAP_HOURS,
     CASAFARI_VERIFIED_HISTORY_URL_PATH,
@@ -29,6 +30,7 @@ from core.normalization.portals import (
     canonicalize_portal_label,
     normalize_portal_key as normalize_portal_key_base,
 )
+from core.services.casafari_session_service import looks_like_history_body
 from core.normalization.text import normalize_text, normalize_text_key
 from core.normalization.urls import normalize_url
 
@@ -142,6 +144,15 @@ GENERIC_NAME_TOKENS = {
     "agencia",
     "inmobiliaria",
 }
+
+NETWORK_NOISE_HINTS = (
+    "what would you like to do first",
+    "starting-page",
+    "userguiding",
+    "faq___",
+    "modal",
+    "center de ayuda",
+)
 
 
 def utc_now_naive() -> datetime:
@@ -782,6 +793,12 @@ def normalize_network_item(record: dict, page_url: str, payload_url: str, page_n
     contact_phone = find_phone_in_record(record)
 
     fallback_text = normalize_text(stringify_node(record)) or ""
+    noise_probe = " ".join(
+        part for part in (payload_url, listing_url, title, fallback_text) if part
+    ).lower()
+
+    if any(token in noise_probe for token in NETWORK_NOISE_HINTS):
+        return None
 
     if contains_suspicious_noise(fallback_text):
         return None
@@ -1106,6 +1123,57 @@ def save_json(path: Path, data: Any) -> None:
     )
 
 
+def save_failure_debug(
+    *,
+    debug_dir: Path,
+    target_url: str,
+    final_url: str,
+    sync_mode: str,
+    error_message: str,
+    extractor_used: str = "none",
+    pages_seen: int = 0,
+    items_seen: int = 0,
+    total_expected: int | None = None,
+    candidate_payloads: int = 0,
+    captured_payloads_total: int = 0,
+    warnings: list[str] | None = None,
+    body_text: str | None = None,
+    page_html: str | None = None,
+) -> None:
+    html_dir = debug_dir / "html"
+    screenshots_dir = debug_dir / "screenshots"
+    text_dir = debug_dir / "text"
+
+    if page_html:
+        save_text(html_dir / "failure_page.html", page_html)
+    if body_text:
+        save_text(text_dir / "failure_page.txt", body_text)
+
+    save_json(
+        debug_dir / "run_summary.json",
+        {
+            "target_url": target_url,
+            "final_url": final_url,
+            "pages_seen": pages_seen,
+            "items_seen": items_seen,
+            "total_expected": total_expected,
+            "coverage_gap": (
+                max(total_expected - items_seen, 0)
+                if isinstance(total_expected, int)
+                else None
+            ),
+            "extractor_used": extractor_used,
+            "sync_mode": sync_mode,
+            "candidate_payloads": candidate_payloads,
+            "captured_payloads_total": captured_payloads_total,
+            "warnings": warnings or [],
+            "error_message": error_message,
+            "failed": True,
+            "screenshots_dir": str(screenshots_dir),
+        },
+    )
+
+
 def get_page_signature(page) -> str:
     try:
         body_text = page.locator("body").inner_text(timeout=8000)
@@ -1231,12 +1299,6 @@ class CasafariHistoryConnector:
         *,
         sync_mode: str = "balanced",
     ) -> dict:
-        if not CASAFARI_STORAGE_STATE_PATH.exists():
-            raise FileNotFoundError(
-                f"No existe la sesión guardada: {CASAFARI_STORAGE_STATE_PATH}. "
-                "Ejecuta primero tools.save_casafari_session."
-            )
-
         options = resolve_fetch_options(sync_mode)
         base_url = load_history_base_url()
         target_url = build_history_url(base_url, from_dt, to_dt)
@@ -1251,6 +1313,21 @@ class CasafariHistoryConnector:
         for path in (debug_dir, html_dir, screenshots_dir, text_dir, network_dir):
             path.mkdir(parents=True, exist_ok=True)
 
+        has_profile = CASAFARI_PROFILE_DIR.exists() and any(CASAFARI_PROFILE_DIR.iterdir())
+        has_storage_state = CASAFARI_STORAGE_STATE_PATH.exists()
+        if not has_profile and not has_storage_state:
+            save_failure_debug(
+                debug_dir=debug_dir,
+                target_url=target_url,
+                final_url=target_url,
+                sync_mode=options.mode,
+                error_message="No existe una sesión Casafari preparada",
+                warnings=["missing_session"],
+            )
+            raise FileNotFoundError(
+                "No existe una sesión Casafari preparada. Pulsa primero 'Preparar sesión' en la app."
+            )
+
         all_items: list[dict] = []
         seen_uids: set[str] = set()
         page_number = 1
@@ -1261,12 +1338,20 @@ class CasafariHistoryConnector:
         warnings: list[str] = []
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=options.headless)
-            context = browser.new_context(
-                locale="es-ES",
-                storage_state=str(CASAFARI_STORAGE_STATE_PATH),
-            )
-            page = context.new_page()
+            if has_profile:
+                context = p.chromium.launch_persistent_context(
+                    str(CASAFARI_PROFILE_DIR),
+                    headless=options.headless,
+                    locale="es-ES",
+                )
+                page = context.pages[0] if context.pages else context.new_page()
+            else:
+                browser = p.chromium.launch(headless=options.headless)
+                context = browser.new_context(
+                    locale="es-ES",
+                    storage_state=str(CASAFARI_STORAGE_STATE_PATH),
+                )
+                page = context.new_page()
 
             def on_response(response) -> None:
                 try:
@@ -1305,22 +1390,55 @@ class CasafariHistoryConnector:
             page.wait_for_timeout(options.wait_after_goto_ms)
             final_url = page.url
 
-            body_text_after_goto = page.locator("body").inner_text(timeout=15000)
+            try:
+                body_text_after_goto = page.locator("body").inner_text(timeout=15000)
+            except Exception:
+                body_text_after_goto = ""
 
-            if "login" in final_url.lower():
-                browser.close()
-                raise RuntimeError(
-                    "Casafari ha redirigido a login. Guarda de nuevo la sesión con tools.save_casafari_session."
-                )
+            try:
+                page_html_after_goto = page.content()
+            except Exception:
+                page_html_after_goto = ""
 
-            if not body_text_after_goto or len(body_text_after_goto.strip()) < 50:
+            try:
                 page.screenshot(
-                    path=str(screenshots_dir / "goto_failed_empty_body.png"),
+                    path=str(screenshots_dir / "page_000_after_goto.png"),
                     full_page=True,
                 )
-                browser.close()
+            except Exception:
+                pass
+
+            if "login" in final_url.lower():
+                save_failure_debug(
+                    debug_dir=debug_dir,
+                    target_url=target_url,
+                    final_url=final_url,
+                    sync_mode=options.mode,
+                    error_message="Casafari ha redirigido a login tras abrir la URL de historial",
+                    warnings=["redirected_to_login"],
+                    body_text=body_text_after_goto,
+                    page_html=page_html_after_goto,
+                )
+                context.close()
                 raise RuntimeError(
-                    f"Casafari abrió una página sin contenido útil tras goto. URL final: {final_url}"
+                    "Casafari ha redirigido a login durante el sync. "
+                    f"Prepara la sesión de nuevo y revisa el debug en {debug_dir}."
+                )
+
+            if not looks_like_history_body(body_text_after_goto):
+                save_failure_debug(
+                    debug_dir=debug_dir,
+                    target_url=target_url,
+                    final_url=final_url,
+                    sync_mode=options.mode,
+                    error_message="La página abierta no parece la vista de historial de Casafari",
+                    warnings=["history_not_ready"],
+                    body_text=body_text_after_goto,
+                    page_html=page_html_after_goto,
+                )
+                context.close()
+                raise RuntimeError(
+                    f"Casafari no dejó la vista de historial lista tras abrir la URL. Debug: {debug_dir}"
                 )
 
             payload_cursor = 0
@@ -1381,11 +1499,15 @@ class CasafariHistoryConnector:
 
                 page_added = 0
 
-                if page_items_network:
+                if len(page_items_network) >= 3:
                     extractor_used = "network"
                     all_items.extend(page_items_network)
                     page_added = len(page_items_network)
                 else:
+                    if page_items_network:
+                        warnings.append(
+                            f"Payload network débil en página {page_number}. Se usa DOM como fallback."
+                        )
                     page_items_dom = []
                     for item in parse_history_page(html, page.url, page_number):
                         if item["source_uid"] in seen_uids:
@@ -1452,7 +1574,12 @@ class CasafariHistoryConnector:
                 },
             )
 
-            browser.close()
+            try:
+                context.storage_state(path=str(CASAFARI_STORAGE_STATE_PATH))
+            except Exception:
+                pass
+
+            context.close()
 
         return {
             "target_url": target_url,

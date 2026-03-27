@@ -1,13 +1,8 @@
-from pathlib import Path
+from core.runtime_paths import DEBUG_DATA_DIR, RAW_DATA_DIR, STATE_DATA_DIR
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = BASE_DIR / "data"
-RAW_DIR = DATA_DIR / "raw"
-STATE_DIR = DATA_DIR / "state"
-DEBUG_DIR = DATA_DIR / "debug" / "casafari"
-
-for path in (DATA_DIR, RAW_DIR, STATE_DIR, DEBUG_DIR):
-    path.mkdir(parents=True, exist_ok=True)
+RAW_DIR = RAW_DATA_DIR
+STATE_DIR = STATE_DATA_DIR
+DEBUG_DIR = DEBUG_DATA_DIR
 
 CASAFARI_SOURCE_NAME = "casafari_history"
 
@@ -23,19 +18,10 @@ CASAFARI_HISTORY_BASE_URL = (
 
 CASAFARI_STORAGE_STATE_PATH = STATE_DIR / "casafari_storage_state.json"
 CASAFARI_VERIFIED_HISTORY_URL_PATH = STATE_DIR / "casafari_verified_history_url.txt"
+CASAFARI_PROFILE_DIR = STATE_DIR / "casafari_profile"
 
 CASAFARI_DEBUG_BASE_DIR = DEBUG_DIR
-CASAFARI_DEBUG_HTML_DIR = CASAFARI_DEBUG_BASE_DIR / "html"
-CASAFARI_DEBUG_SCREENSHOT_DIR = CASAFARI_DEBUG_BASE_DIR / "screenshots"
-CASAFARI_DEBUG_TEXT_DIR = CASAFARI_DEBUG_BASE_DIR / "text"
-CASAFARI_DEBUG_NETWORK_DIR = CASAFARI_DEBUG_BASE_DIR / "network"
-
-for path in (
-    CASAFARI_DEBUG_HTML_DIR,
-    CASAFARI_DEBUG_SCREENSHOT_DIR,
-    CASAFARI_DEBUG_TEXT_DIR,
-    CASAFARI_DEBUG_NETWORK_DIR,
-):
+for path in (CASAFARI_DEBUG_BASE_DIR, CASAFARI_PROFILE_DIR):
     path.mkdir(parents=True, exist_ok=True)
 
 CASAFARI_HEADLESS = False

@@ -74,6 +74,7 @@ class CasafariLinksView(QWidget):
         root_layout.addWidget(scroll)
 
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         scroll.setWidget(page)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(10, 8, 10, 20)
@@ -211,9 +212,13 @@ class CasafariLinksView(QWidget):
 
     def _build_case_tab(self) -> None:
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         layout = QFormLayout(page)
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(12)
 
         self.lbl_case = QLabel("Selecciona una fila")
         self.lbl_case.setWordWrap(True)
@@ -243,9 +248,13 @@ class CasafariLinksView(QWidget):
 
     def _build_review_tab(self) -> None:
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         layout = QFormLayout(page)
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(12)
 
         self.review_label_combo = QComboBox()
         self.review_label_combo.addItems(["match", "no_match", "uncertain"])
@@ -366,10 +375,10 @@ class CasafariLinksView(QWidget):
             f"{safe_text(row['reason_taxonomy'])} | dirección {safe_text(row['address_precision'])}"
         )
         self.lbl_phone.setText(
-            f"{safe_text(row['contact_phone'])} | perfil {safe_text(row['phone_profile'])} | listings {safe_text(row['phone_listing_count'])}"
+            f"{safe_text(row['contact_phone'])} | perfil {safe_text(row['phone_profile'])}"
         )
         self.lbl_price.setText(
-            f"Actual {safe_text(row['current_price_eur'])} | previa {safe_text(row['previous_price_eur'])} | confianza {safe_text(row['price_confidence'])}"
+            f"Actual {safe_text(row['current_price_eur'])} | previa {safe_text(row['previous_price_eur'])}"
         )
         self.lbl_listing.setText(
             f"{safe_text(row['listing_label'])} | listing_id {safe_text(row['listing_id'])}"

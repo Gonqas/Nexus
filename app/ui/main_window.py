@@ -144,7 +144,8 @@ class MainWindow(QMainWindow):
             ),
         ]
 
-        self.page_widgets: list[QWidget] = [page.widget_cls() for page in self.page_defs]
+        self.page_widgets: list[QWidget | None] = [None for _ in self.page_defs]
+        self.page_placeholders: list[QWidget] = [QWidget() for _ in self.page_defs]
         self.page_index_by_key = {page.key: idx for idx, page in enumerate(self.page_defs)}
         self.nav_buttons: list[QPushButton] = []
 
@@ -169,13 +170,12 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(top_shell)
 
         self.stack = QStackedWidget()
-        for widget in self.page_widgets:
+        for widget in self.page_placeholders:
             self.stack.addWidget(widget)
         content_layout.addWidget(self.stack, 1)
 
         shell_layout.addWidget(content, 1)
 
-        self._wire_cross_navigation()
         self._activate_page(0)
 
     def _build_sidebar(self) -> QFrame:
@@ -304,22 +304,31 @@ class MainWindow(QMainWindow):
 
         return shell
 
-    def _wire_cross_navigation(self) -> None:
-        map_view = self._get_page_widget("map", MapView)
-        radar_view = self._get_page_widget("radar", RadarView)
-        queue_view = self._get_page_widget("queue", OpportunityQueueView)
+    def _ensure_page(self, index: int) -> QWidget:
+        existing = self.page_widgets[index]
+        if existing is not None:
+            return existing
 
-        if map_view and radar_view:
-            radar_view.open_in_map_requested.connect(self._open_map_with_context)
+        widget = self.page_defs[index].widget_cls()
+        placeholder = self.page_placeholders[index]
+        self.stack.removeWidget(placeholder)
+        placeholder.deleteLater()
+        self.stack.insertWidget(index, widget)
+        self.page_widgets[index] = widget
 
-        if map_view and queue_view:
-            queue_view.open_in_map_requested.connect(self._open_map_with_context)
+        page_key = self.page_defs[index].key
+        if page_key == "radar" and isinstance(widget, RadarView):
+            widget.open_in_map_requested.connect(self._open_map_with_context)
+        if page_key == "queue" and isinstance(widget, OpportunityQueueView):
+            widget.open_in_map_requested.connect(self._open_map_with_context)
+
+        return widget
 
     def _get_page_widget(self, key: str, widget_type: type[QWidget]) -> QWidget | None:
         index = self.page_index_by_key.get(key)
         if index is None:
             return None
-        widget = self.page_widgets[index]
+        widget = self._ensure_page(index)
         if isinstance(widget, widget_type):
             return widget
         return None
@@ -342,6 +351,7 @@ class MainWindow(QMainWindow):
         )
 
     def _activate_page(self, index: int) -> None:
+        self._ensure_page(index)
         self.stack.setCurrentIndex(index)
         page = self.page_defs[index]
         self.shell_title.setText(page.title)

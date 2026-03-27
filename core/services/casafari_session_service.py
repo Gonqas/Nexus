@@ -11,6 +11,7 @@ from playwright.sync_api import sync_playwright
 from core.config.settings import (
     CASAFARI_DEBUG_BASE_DIR,
     CASAFARI_HISTORY_BASE_URL,
+    CASAFARI_PROFILE_DIR,
     CASAFARI_STORAGE_STATE_PATH,
     CASAFARI_VERIFIED_HISTORY_URL_PATH,
 )
@@ -45,6 +46,18 @@ def is_history_ready_url(url: str | None) -> bool:
     return "historytype" in query_keys and "from" in query_keys and "to" in query_keys
 
 
+def looks_like_history_body(body_text: str | None) -> bool:
+    text = (body_text or "").strip().lower()
+    if len(text) < 120:
+        return False
+
+    required_signals = ("nuevo", "bajada de precio", "reservado", "vendido")
+    listing_signals = ("anuncios", "en venta", "idealista", "fotocasa", "pisos", "milanuncios")
+    return any(token in text for token in required_signals) and any(
+        token in text for token in listing_signals
+    )
+
+
 def _file_mtime_iso(path: Path) -> str | None:
     if not path.exists():
         return None
@@ -53,6 +66,7 @@ def _file_mtime_iso(path: Path) -> str | None:
 
 def get_casafari_session_status() -> dict:
     session_exists = CASAFARI_STORAGE_STATE_PATH.exists()
+    profile_ready = CASAFARI_PROFILE_DIR.exists() and any(CASAFARI_PROFILE_DIR.iterdir())
     verified_url = None
     if CASAFARI_VERIFIED_HISTORY_URL_PATH.exists():
         value = CASAFARI_VERIFIED_HISTORY_URL_PATH.read_text(encoding="utf-8").strip()
@@ -60,8 +74,10 @@ def get_casafari_session_status() -> dict:
 
     return {
         "session_exists": session_exists,
-        "session_ready": session_exists and bool(verified_url),
+        "profile_ready": profile_ready,
+        "session_ready": (session_exists or profile_ready) and bool(verified_url),
         "session_file": str(CASAFARI_STORAGE_STATE_PATH),
+        "profile_dir": str(CASAFARI_PROFILE_DIR),
         "session_saved_at": _file_mtime_iso(CASAFARI_STORAGE_STATE_PATH),
         "verified_history_url": verified_url,
         "verified_history_saved_at": _file_mtime_iso(CASAFARI_VERIFIED_HISTORY_URL_PATH),
@@ -72,7 +88,7 @@ def prepare_casafari_session(
     progress_callback=None,
     *,
     max_wait_seconds: int = 900,
-    stable_checks_required: int = 3,
+    stable_checks_required: int = 5,
 ) -> dict:
     start_url = load_start_url()
     screenshot_path = CASAFARI_DEBUG_BASE_DIR / "last_verified_page.png"
@@ -82,18 +98,17 @@ def prepare_casafari_session(
         if progress_callback:
             progress_callback(message, current, total)
 
-    context_kwargs = {"locale": "es-ES"}
-    if CASAFARI_STORAGE_STATE_PATH.exists():
-        context_kwargs["storage_state"] = str(CASAFARI_STORAGE_STATE_PATH)
-
     deadline = monotonic() + max_wait_seconds
     last_url = start_url
     stable_hits = 0
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context(**context_kwargs)
-        page = context.new_page()
+        context = p.chromium.launch_persistent_context(
+            str(CASAFARI_PROFILE_DIR),
+            headless=False,
+            locale="es-ES",
+        )
+        page = context.pages[0] if context.pages else context.new_page()
 
         try:
             emit("Abriendo Casafari para preparar sesion...", 0, stable_checks_required)
@@ -130,7 +145,7 @@ def prepare_casafari_session(
                 except Exception:
                     body_text = ""
 
-                useful_body = len((body_text or "").strip()) >= 50
+                useful_body = looks_like_history_body(body_text)
                 ready_url = is_history_ready_url(current_url)
 
                 if is_login_url(current_url):
@@ -179,6 +194,6 @@ def prepare_casafari_session(
             )
         finally:
             try:
-                browser.close()
+                context.close()
             except Exception:
                 pass

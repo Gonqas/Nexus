@@ -87,6 +87,7 @@ class OpportunityQueueView(QWidget):
         root_layout.addWidget(scroll)
 
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         scroll.setWidget(page)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(10, 8, 10, 20)
@@ -252,9 +253,13 @@ class OpportunityQueueView(QWidget):
 
     def _build_summary_tab(self) -> None:
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         layout = QFormLayout(page)
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(12)
 
         self.lbl_score = QLabel("-")
         self.lbl_priority = QLabel("-")
@@ -281,9 +286,13 @@ class OpportunityQueueView(QWidget):
 
     def _build_zone_tab(self) -> None:
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         layout = QFormLayout(page)
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setSpacing(12)
 
         self.lbl_zone = QLabel("-")
         self.lbl_zone.setWordWrap(True)
@@ -510,9 +519,8 @@ class OpportunityQueueView(QWidget):
         )
         self.lbl_prediction.setText(
             compact_detail_lines(
-                f"Oportunidad: {safe_text(row.get('predicted_opportunity_30d_score'))} ({safe_text(row.get('predicted_opportunity_30d_band'))})",
-                f"Zona: {safe_text(row.get('predicted_absorption_30d_score'))} ({safe_text(row.get('predicted_absorption_30d_band'))})",
-                safe_text(row.get("prediction_explanation")),
+                f"Oportunidad {safe_text(row.get('predicted_opportunity_30d_score'))} ({safe_text(row.get('predicted_opportunity_30d_band'))})",
+                f"Zona {safe_text(row.get('predicted_absorption_30d_score'))} ({safe_text(row.get('predicted_absorption_30d_band'))})",
             )
         )
 
@@ -520,8 +528,8 @@ class OpportunityQueueView(QWidget):
             f"{safe_text(row.get('zone_label'))} | {safe_text(row.get('zone_recommended_action'))}"
         )
         self.lbl_zone_context.setText(
-            f"Población {safe_int(row.get('zone_population'))} | "
-            f"evt/10k {safe_float(row.get('zone_events_14d_per_10k_population'))} | "
+            f"{safe_int(row.get('zone_population'))} hab | "
+            f"{safe_float(row.get('zone_events_14d_per_10k_population'))} evt/10k | "
             f"IVT {safe_float(row.get('zone_vulnerability_index'))}"
         )
         self.lbl_zone_scores.setText(

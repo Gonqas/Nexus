@@ -6,10 +6,10 @@ import orjson
 
 from core.features.location_labels import canonical_zone_label
 from core.normalization.text import normalize_text_key
+from core.runtime_paths import PROCESSED_RESOURCE_DIR
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-PROCESSED_DIR = BASE_DIR / "data" / "processed"
+PROCESSED_DIR = PROCESSED_RESOURCE_DIR
 ZONE_CONTEXT_PATH = PROCESSED_DIR / "madrid_zone_external_context.json"
 
 _CACHE_SIGNATURE: tuple[int, int] | None = None

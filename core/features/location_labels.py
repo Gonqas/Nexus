@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import orjson
 
-from core.normalization.text import normalize_text
+from core.normalization.text import normalize_text, normalize_text_key
+from core.runtime_paths import PROCESSED_RESOURCE_DIR
 
 
 ZONE_LABEL_ALIASES: dict[str, str] = {
@@ -64,31 +63,16 @@ PRETTY_REPLACEMENTS: dict[str, str] = {
     "Ciudad Jardin": "Ciudad Jardín",
     "Palos De La Frontera": "Palos de la Frontera",
     "Ilustracion": "Ilustración",
-    "Recoletos": "Recoletos",
     "Puerta De Hierro": "Puerta de Hierro",
     "Arguelles": "Argüelles",
     "La Concepcion": "La Concepción",
     "Fontarron": "Fontarrón",
-    "Legazpi": "Legazpi",
-    "Bellas Vistas": "Bellas Vistas",
-    "Valdeacederas": "Valdeacederas",
-    "Valdefuentes": "Valdefuentes",
-    "Justicia": "Justicia",
-    "Simancas": "Simancas",
-    "Prosperidad": "Prosperidad",
-    "Rosas": "Rosas",
     "Alameda De Osuna": "Alameda de Osuna",
-    "La Paz": "La Paz",
-    "El Pilar": "El Pilar",
-    "El Viso": "El Viso",
     "Pinar Del Rey": "Pinar del Rey",
-    "Cuatro Caminos": "Cuatro Caminos",
-    "Palos De La Frontera": "Palos de la Frontera",
 }
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-ZONE_CONTEXT_PATH = BASE_DIR / "data" / "processed" / "madrid_zone_external_context.json"
+ZONE_CONTEXT_PATH = PROCESSED_RESOURCE_DIR / "madrid_zone_external_context.json"
 _KNOWN_ZONE_LABELS_CACHE: set[str] | None = None
 
 
@@ -126,13 +110,17 @@ def _load_known_zone_labels() -> set[str]:
     return labels
 
 
+def _normalize_candidate(text: str) -> str:
+    title_text = text.title() if text.upper() == text else text
+    return PRETTY_REPLACEMENTS.get(title_text, title_text)
+
+
 def is_official_zone_label(value: str | None) -> bool:
     text = _base_clean(value)
     if not text:
         return False
 
-    candidate = PRETTY_REPLACEMENTS.get(text.title() if text.upper() == text else text, text)
-    return candidate in _load_known_zone_labels()
+    return _normalize_candidate(text) in _load_known_zone_labels()
 
 
 def canonical_zone_label(value: str | None) -> str | None:
@@ -140,19 +128,16 @@ def canonical_zone_label(value: str | None) -> str | None:
     if not text:
         return None
 
-    key = text.lower()
+    key = normalize_text_key(text)
     if key in ZONE_LABEL_ALIASES:
         return ZONE_LABEL_ALIASES[key]
 
-    text = text.replace(" - Barrio", "")
-    text = text.replace(" - Zona", "")
-    text = text.replace("(Recoletos)", "Recoletos")
-    text = " ".join(text.split()).strip(" -,")
+    cleaned = text.replace(" - Barrio", "")
+    cleaned = cleaned.replace(" - Zona", "")
+    cleaned = cleaned.replace("(Recoletos)", "Recoletos")
+    cleaned = " ".join(cleaned.split()).strip(" -,")
 
-    if text.upper() == text:
-        text = text.title()
-
-    candidate = PRETTY_REPLACEMENTS.get(text, text)
+    candidate = _normalize_candidate(cleaned)
     if candidate in _load_known_zone_labels():
         return candidate
     return None

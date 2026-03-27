@@ -4,6 +4,7 @@ from __future__ import annotations
 def build_app_stylesheet() -> str:
     return """
     QWidget {
+        background-color: #f6f7f9;
         color: #17212b;
         font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
         font-size: 13px;
@@ -23,6 +24,12 @@ def build_app_stylesheet() -> str:
     QFrame#Sidebar {
         background-color: #ffffff;
         border-right: 1px solid #dde3ea;
+    }
+
+    QStackedWidget > QWidget,
+    QScrollArea > QWidget > QWidget,
+    QWidget#PageScrollContainer {
+        background-color: #f6f7f9;
     }
 
     QLabel#BrandEyebrow {
@@ -188,16 +195,18 @@ def build_app_stylesheet() -> str:
     }
 
     QGroupBox {
-        margin-top: 9px;
-        padding-top: 12px;
+        margin-top: 14px;
+        padding-top: 14px;
         font-weight: 700;
         color: #243447;
     }
 
     QGroupBox::title {
         subcontrol-origin: margin;
-        left: 12px;
-        padding: 0 6px;
+        left: 14px;
+        padding: 2px 8px;
+        color: #39536d;
+        background-color: #f6f7f9;
     }
 
     QHeaderView::section {
@@ -259,7 +268,7 @@ def build_app_stylesheet() -> str:
     QScrollArea,
     QStackedWidget {
         border: none;
-        background: transparent;
+        background: #f6f7f9;
     }
 
     QTabWidget::pane {

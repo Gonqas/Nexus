@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core.runtime_paths import INBOX_DATA_DIR
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-BASELINE_INBOX_DIR = BASE_DIR / "data" / "inbox" / "baseline_uploads"
+
+BASELINE_INBOX_DIR = INBOX_DATA_DIR / "baseline_uploads"
 ALLOWED_SUFFIXES = {".csv", ".xlsx", ".xls"}
 
 

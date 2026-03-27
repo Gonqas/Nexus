@@ -91,6 +91,7 @@ def get_sync_status(session: Session) -> dict:
         "last_sync_mode": debug_summary.get("sync_mode"),
         "last_final_url": debug_summary.get("final_url"),
         "last_target_url": debug_summary.get("target_url"),
+        "last_debug_error": debug_summary.get("error_message"),
         **session_status,
     }
 

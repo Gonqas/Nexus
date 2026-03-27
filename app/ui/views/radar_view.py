@@ -123,6 +123,7 @@ class RadarView(QWidget):
         root_layout.addWidget(scroll)
 
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         scroll.setWidget(page)
 
         layout = QVBoxLayout(page)

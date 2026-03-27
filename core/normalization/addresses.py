@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 
 from core.geography.madrid_street_catalog import MadridStreetCatalog, parse_address_text
 from core.normalization.text import normalize_text, normalize_text_key
+from core.runtime_paths import PROCESSED_RESOURCE_DIR
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-CATALOG_PATH = BASE_DIR / "data" / "processed" / "madrid_street_catalog.json"
+CATALOG_PATH = PROCESSED_RESOURCE_DIR / "madrid_street_catalog.json"
 
 
 @lru_cache(maxsize=1)

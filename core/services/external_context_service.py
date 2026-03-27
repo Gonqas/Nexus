@@ -4,9 +4,10 @@ from pathlib import Path
 
 import orjson
 
+from core.runtime_paths import PROCESSED_RESOURCE_DIR
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-PROCESSED_DIR = BASE_DIR / "data" / "processed"
+
+PROCESSED_DIR = PROCESSED_RESOURCE_DIR
 FULL_CATALOG_PATH = PROCESSED_DIR / "madrid_external_context_catalog_full.json"
 FOCUS_CATALOG_PATH = PROCESSED_DIR / "madrid_external_context_catalog_focus.json"
 SUMMARY_PATH = PROCESSED_DIR / "madrid_external_context_catalog_summary.json"

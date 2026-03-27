@@ -104,6 +104,7 @@ class ImportView(QWidget):
         root_layout.addWidget(scroll)
 
         page = QWidget()
+        page.setObjectName("PageScrollContainer")
         scroll.setWidget(page)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(10, 8, 10, 20)

@@ -163,6 +163,8 @@ class SyncView(QWidget):
         self.lbl_verified_url.setWordWrap(True)
         self.lbl_session_file = QLabel("-")
         self.lbl_session_file.setWordWrap(True)
+        self.lbl_profile_dir = QLabel("-")
+        self.lbl_profile_dir.setWordWrap(True)
 
         form.addRow("Ultimo estado", self.lbl_last_status)
         form.addRow("Ultimo inicio", self.lbl_last_started)
@@ -175,6 +177,7 @@ class SyncView(QWidget):
         form.addRow("Sesion guardada", self.lbl_session_saved_at)
         form.addRow("URL verificada", self.lbl_verified_url)
         form.addRow("Fichero sesion", self.lbl_session_file)
+        form.addRow("Perfil navegador", self.lbl_profile_dir)
         layout.addWidget(self.status_group)
         layout.addStretch()
         self.tabs.addTab(page, "Estado")
@@ -197,6 +200,8 @@ class SyncView(QWidget):
         self.lbl_debug_dir.setWordWrap(True)
         self.lbl_warnings = QLabel("-")
         self.lbl_warnings.setWordWrap(True)
+        self.lbl_debug_error = QLabel("-")
+        self.lbl_debug_error.setWordWrap(True)
 
         form.addRow("URL objetivo", self.lbl_target_url)
         form.addRow("URL final", self.lbl_final_url)
@@ -206,6 +211,7 @@ class SyncView(QWidget):
         form.addRow("Gap cobertura", self.lbl_coverage_gap)
         form.addRow("Debug dir", self.lbl_debug_dir)
         form.addRow("Warnings", self.lbl_warnings)
+        form.addRow("Error debug", self.lbl_debug_error)
         layout.addWidget(self.runtime_group)
         layout.addStretch()
         self.tabs.addTab(page, "Diagnostico")
@@ -277,10 +283,12 @@ class SyncView(QWidget):
         self.lbl_session_saved_at.setText(safe_text(status.get("session_saved_at")))
         self.lbl_verified_url.setText(safe_text(status.get("verified_history_url")))
         self.lbl_session_file.setText(safe_text(status.get("session_file")))
+        self.lbl_profile_dir.setText(safe_text(status.get("profile_dir")))
         self.session_card.set_content(
             "lista" if self.session_ready else "pendiente",
             safe_text(status.get("session_saved_at")),
         )
+        self.lbl_debug_error.setText(safe_text(status.get("last_debug_error")))
         self.sync_button.setEnabled(self.session_ready)
         self.session_button.setEnabled(True)
 

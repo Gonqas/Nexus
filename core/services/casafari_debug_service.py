@@ -12,7 +12,7 @@ def _summary_files() -> list[Path]:
         return []
     return sorted(
         CASAFARI_DEBUG_BASE_DIR.glob("*/run_summary.json"),
-        key=lambda path: path.stat().st_mtime,
+        key=lambda path: (path.stat().st_mtime_ns, path.parent.name),
         reverse=True,
     )
 
@@ -46,6 +46,7 @@ def get_latest_casafari_debug_summary() -> dict[str, Any]:
             "warnings": warnings,
             "warning_count": len(warnings),
             "sync_mode": data.get("sync_mode"),
+            "error_message": data.get("error_message"),
         }
 
     return {
@@ -63,4 +64,5 @@ def get_latest_casafari_debug_summary() -> dict[str, Any]:
         "warnings": [],
         "warning_count": 0,
         "sync_mode": None,
+        "error_message": None,
     }
