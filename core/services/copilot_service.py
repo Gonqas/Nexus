@@ -58,6 +58,18 @@ def _detect_intent(query_key: str) -> tuple[str, dict[str, Any]]:
     if not query_key:
         return "empty", {}
 
+    if any(term in query_key for term in ("reconciliar pendientes", "reintenta matching", "resolver pendientes")):
+        return "action_reconcile", {}
+
+    if any(term in query_key for term in ("preparar sesion", "prepara sesion", "login casafari", "iniciar sesion casafari")):
+        return "action_prepare_session", {}
+
+    if any(term in query_key for term in ("sincroniza casafari", "sincronizar casafari", "actualiza casafari", "scrapea casafari")):
+        return "action_sync", {}
+
+    if any(term in query_key for term in ("reindexa", "reindexar", "actualiza indice", "reconstruye indice")):
+        return "action_reindex", {}
+
     if any(term in query_key for term in ("weak identity", "sin resolver", "matching", "review", "revisar")):
         focus = "all"
         if "weak identity" in query_key:
@@ -170,6 +182,26 @@ def _build_casafari_suggestions(rows: list[dict], limit: int) -> list[dict[str, 
     return suggestions
 
 
+def _build_action_suggestion(
+    *,
+    item: str,
+    why: str,
+    action: str,
+    action_id: str,
+    target_view: str,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "tipo": "Accion",
+            "item": item,
+            "por_que": why,
+            "accion": action,
+            "action_id": action_id,
+            "target_view": target_view,
+        }
+    ]
+
+
 def run_copilot_query(session: Session, query: str, *, default_limit: int = 5) -> dict[str, Any]:
     query_raw = (query or "").strip()
     query_key = _clean_query(query_raw)
@@ -228,6 +260,74 @@ def run_copilot_query(session: Session, query: str, *, default_limit: int = 5) -
             "answer": answer,
             "next_step": "Abre la zona que mas te encaje y bajala luego al mapa o a la cola operativa.",
             "suggestions": _build_zone_suggestions(rows, limit),
+            "search_payload": None,
+        }
+
+    if intent == "action_reconcile":
+        return {
+            "query": query_raw,
+            "intent": intent,
+            "title": "Reconciliar Casafari",
+            "answer": "Puedo relanzar el matching de pendientes para intentar resolver los casos que se quedaron a medias.",
+            "next_step": "Ejecuta la accion y luego revisa los casos que sigan con identidad debil o conflicto de precio.",
+            "suggestions": _build_action_suggestion(
+                item="Reconciliar pendientes Casafari",
+                why="Sirve para reintentar el matching con el estado actual de la base.",
+                action="Ejecutar reconciliacion",
+                action_id="casafari_reconcile",
+                target_view="casafari",
+            ),
+            "search_payload": None,
+        }
+
+    if intent == "action_prepare_session":
+        return {
+            "query": query_raw,
+            "intent": intent,
+            "title": "Preparar sesion Casafari",
+            "answer": "Puedo abrir el flujo para dejar la sesion lista antes de sincronizar.",
+            "next_step": "Haz login y deja visible la pantalla de historial para que la sesion quede validada.",
+            "suggestions": _build_action_suggestion(
+                item="Preparar sesion Casafari",
+                why="Es el paso previo necesario antes de sincronizar si la sesion ha caducado.",
+                action="Abrir preparacion de sesion",
+                action_id="casafari_prepare_session",
+                target_view="sync",
+            ),
+            "search_payload": None,
+        }
+
+    if intent == "action_sync":
+        return {
+            "query": query_raw,
+            "intent": intent,
+            "title": "Sincronizar Casafari",
+            "answer": "Puedo lanzar una nueva sincronizacion del delta de Casafari con la sesion guardada.",
+            "next_step": "Si la sesion no esta lista, prepara sesion antes de sincronizar.",
+            "suggestions": _build_action_suggestion(
+                item="Sincronizar Casafari",
+                why="Traera raws nuevos y reintentara enlazarlos con la base.",
+                action="Ejecutar sync",
+                action_id="casafari_sync",
+                target_view="sync",
+            ),
+            "search_payload": None,
+        }
+
+    if intent == "action_reindex":
+        return {
+            "query": query_raw,
+            "intent": intent,
+            "title": "Reindexar busqueda",
+            "answer": "Puedo reconstruir el indice para que la busqueda y el copiloto tengan el dato mas fresco.",
+            "next_step": "Hazlo cuando notes resultados raros o despues de cambios grandes en la base.",
+            "suggestions": _build_action_suggestion(
+                item="Reindexar FTS",
+                why="Actualiza el indice de busqueda global del sistema.",
+                action="Reindexar ahora",
+                action_id="search_reindex",
+                target_view="search",
+            ),
             "search_payload": None,
         }
 

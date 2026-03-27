@@ -38,6 +38,8 @@ def safe_money(value: object | None) -> str:
 
 class SearchView(QWidget):
     open_context_requested = Signal(dict)
+    open_map_requested = Signal(dict)
+    execute_action_requested = Signal(dict)
 
     def __init__(self) -> None:
         super().__init__()
@@ -58,68 +60,76 @@ class SearchView(QWidget):
         layout.setContentsMargins(10, 8, 10, 20)
         layout.setSpacing(16)
 
-        title = QLabel("Buscar")
+        title = QLabel("Copiloto")
         title.setObjectName("PageTitle")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Haz una pregunta corta al dato y luego entra solo en el bloque que te interese. La búsqueda ya no necesita varias pantallas a la vez."
+            "Pregunta que quieres saber o hacer. El copiloto responde, abre contexto o ejecuta acciones sin obligarte a recorrer menus."
         )
         subtitle.setObjectName("PageSubtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        search_box = QGroupBox("Consulta")
-        search_layout = QVBoxLayout(search_box)
-        search_layout.setSpacing(10)
+        query_box = QGroupBox("Pregunta o pide una accion")
+        query_layout = QVBoxLayout(query_box)
+        query_layout.setSpacing(10)
 
         first_row = QHBoxLayout()
         self.query_input = QLineEdit()
         self.query_input.setPlaceholderText(
-            "Ejemplo: calle mayor 10, 699111222, weak_identity, fotocasa"
+            "Ejemplo: zonas para captar, casafari weak identity, sincroniza casafari"
         )
-        self.query_input.returnPressed.connect(self.run_search)
-
-        self.section_filter = QComboBox()
-        self.section_filter.addItems(["all", "assets", "listings", "raws", "events"])
+        self.query_input.returnPressed.connect(self.run_copilot)
 
         self.limit_combo = QComboBox()
-        self.limit_combo.addItems(["10", "25", "50"])
-        self.limit_combo.setCurrentText("25")
+        self.limit_combo.addItems(["5", "10", "25"])
+        self.limit_combo.setCurrentText("10")
 
-        self.search_button = QPushButton("Buscar")
-        self.search_button.clicked.connect(self.run_search)
-
-        self.copilot_button = QPushButton("Copiloto")
+        self.copilot_button = QPushButton("Preguntar")
         self.copilot_button.clicked.connect(self.run_copilot)
 
-        self.reindex_button = QPushButton("Reindexar")
-        self.reindex_button.setObjectName("GhostButton")
-        self.reindex_button.clicked.connect(self.reindex_fts)
+        self.classic_toggle_button = QPushButton("Mostrar busqueda clasica")
+        self.classic_toggle_button.setObjectName("GhostButton")
+        self.classic_toggle_button.clicked.connect(self.toggle_classic_results)
 
-        first_row.addWidget(QLabel("Buscar"))
+        first_row.addWidget(QLabel("Tu pregunta"))
         first_row.addWidget(self.query_input, 1)
-        first_row.addWidget(QLabel("Ámbito"))
-        first_row.addWidget(self.section_filter)
-        first_row.addWidget(QLabel("Límite"))
+        first_row.addWidget(QLabel("Top"))
         first_row.addWidget(self.limit_combo)
         first_row.addWidget(self.copilot_button)
-        first_row.addWidget(self.search_button)
-        first_row.addWidget(self.reindex_button)
-        search_layout.addLayout(first_row)
+        first_row.addWidget(self.classic_toggle_button)
+        query_layout.addLayout(first_row)
 
-        self.index_status_label = QLabel("FTS5 sin inicializar")
+        prompt_row = QHBoxLayout()
+        prompt_row.addWidget(QLabel("Preguntas rapidas"))
+        for label, query in (
+            ("Zonas para captar", "zonas para captar"),
+            ("Oportunidades hoy", "oportunidades con entrada nueva"),
+            ("Casafari dudoso", "casafari weak identity"),
+            ("Sincronizar Casafari", "sincroniza casafari"),
+        ):
+            button = QPushButton(label)
+            button.setObjectName("GhostButton")
+            button.clicked.connect(lambda _checked=False, q=query: self.run_preset_query(q))
+            prompt_row.addWidget(button)
+        prompt_row.addStretch()
+        query_layout.addLayout(prompt_row)
+
+        self.index_status_label = QLabel("Indice sin inicializar")
         self.index_status_label.setObjectName("MetricDetail")
         self.index_status_label.setWordWrap(True)
-        search_layout.addWidget(self.index_status_label)
-        layout.addWidget(search_box)
+        query_layout.addWidget(self.index_status_label)
+        layout.addWidget(query_box)
 
-        self.summary_label = QLabel("Todavía no has lanzado ninguna búsqueda.")
+        self.summary_label = QLabel(
+            "Empieza por una frase corta. El copiloto puede explicar, navegar, abrir el mapa o lanzar acciones."
+        )
         self.summary_label.setObjectName("HeroSummary")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
 
-        self.copilot_box = QGroupBox("Copiloto")
+        self.copilot_box = QGroupBox("Respuesta")
         copilot_layout = QVBoxLayout(self.copilot_box)
         copilot_layout.setSpacing(8)
 
@@ -128,7 +138,7 @@ class SearchView(QWidget):
         copilot_layout.addWidget(self.copilot_title_label)
 
         self.copilot_answer_label = QLabel(
-            "Haz preguntas como 'barrios con transformacion', 'oportunidades con bajada de precio' o 'casafari weak identity'."
+            "Prueba con zonas, oportunidades, Casafari o acciones del sistema. Por ejemplo: 'zonas con transformacion' o 'preparar sesion casafari'."
         )
         self.copilot_answer_label.setWordWrap(True)
         copilot_layout.addWidget(self.copilot_answer_label)
@@ -143,41 +153,103 @@ class SearchView(QWidget):
         self.copilot_table.verticalHeader().setVisible(False)
         self.copilot_table.setAlternatingRowColors(True)
         self.copilot_table.setCornerButtonEnabled(False)
-        self.copilot_table.setMinimumHeight(180)
+        self.copilot_table.setMinimumHeight(220)
         self.copilot_table.itemSelectionChanged.connect(self.on_copilot_row_selected)
         copilot_layout.addWidget(self.copilot_table)
+
+        self.execute_action_button = QPushButton("Ejecutar accion")
+        self.execute_action_button.setObjectName("GhostButton")
+        self.execute_action_button.setEnabled(False)
+        self.execute_action_button.clicked.connect(self.execute_selected_action)
 
         self.open_context_button = QPushButton("Abrir contexto")
         self.open_context_button.setObjectName("GhostButton")
         self.open_context_button.setEnabled(False)
         self.open_context_button.clicked.connect(self.open_selected_context)
-        copilot_layout.addWidget(self.open_context_button)
+
+        self.open_map_button = QPushButton("Abrir en mapa")
+        self.open_map_button.setObjectName("GhostButton")
+        self.open_map_button.setEnabled(False)
+        self.open_map_button.clicked.connect(self.open_selected_in_map)
+
+        buttons_row = QHBoxLayout()
+        buttons_row.addWidget(self.execute_action_button)
+        buttons_row.addWidget(self.open_context_button)
+        buttons_row.addWidget(self.open_map_button)
+        buttons_row.addStretch()
+        copilot_layout.addLayout(buttons_row)
         layout.addWidget(self.copilot_box)
 
+        self.classic_results_box = QGroupBox("Busqueda clasica y resultados")
+        classic_layout = QVBoxLayout(self.classic_results_box)
+        classic_layout.setSpacing(10)
+
+        classic_hint = QLabel(
+            "Usa esta parte solo cuando necesites explorar resultados en bruto o cuando el copiloto caiga a busqueda general."
+        )
+        classic_hint.setObjectName("MetricDetail")
+        classic_hint.setWordWrap(True)
+        classic_layout.addWidget(classic_hint)
+
+        classic_row = QHBoxLayout()
+        self.section_filter = QComboBox()
+        self.section_filter.addItems(["all", "assets", "listings", "raws", "events"])
+
+        self.search_button = QPushButton("Lanzar busqueda clasica")
+        self.search_button.clicked.connect(self.run_search)
+
+        self.reindex_button = QPushButton("Reindexar")
+        self.reindex_button.setObjectName("GhostButton")
+        self.reindex_button.clicked.connect(self.reindex_fts)
+
+        classic_row.addWidget(QLabel("Ambito"))
+        classic_row.addWidget(self.section_filter)
+        classic_row.addWidget(self.search_button)
+        classic_row.addWidget(self.reindex_button)
+        classic_row.addStretch()
+        classic_layout.addLayout(classic_row)
+
         self.tabs = QTabWidget()
-        layout.addWidget(self.tabs, 1)
+        classic_layout.addWidget(self.tabs, 1)
+        layout.addWidget(self.classic_results_box, 1)
 
         self.assets_table = self._build_table_tab(
             "Activos",
-            ["Asset", "Tipo", "Dirección", "Barrio", "Distrito", "Listings", "Snippet"],
+            ["Asset", "Tipo", "Direccion", "Barrio", "Distrito", "Listings", "Snippet"],
         )
         self.listings_table = self._build_table_tab(
             "Listings",
-            ["Listing", "Asset", "Portal", "Dirección", "Contacto", "Teléfono", "Precio", "Snippet"],
+            ["Listing", "Asset", "Portal", "Direccion", "Contacto", "Telefono", "Precio", "Snippet"],
         )
         self.raws_table = self._build_table_tab(
             "Raw Casafari",
-            ["Raw", "Fecha", "Estado", "Motivo", "Dirección", "Contacto", "Teléfono", "Portal", "Snippet"],
+            ["Raw", "Fecha", "Estado", "Motivo", "Direccion", "Contacto", "Telefono", "Portal", "Snippet"],
         )
         self.events_table = self._build_table_tab(
             "Eventos",
-            ["Evento", "Fecha", "Tipo", "Canal", "Dirección", "Precio", "Snippet"],
+            ["Evento", "Fecha", "Tipo", "Canal", "Direccion", "Precio", "Snippet"],
         )
+
+        self.show_classic_results(False)
 
     def ensure_loaded(self, *, force: bool = False) -> None:
         if self._has_loaded and not force:
             return
         self.refresh_index_status(force_rebuild=force)
+
+    def run_preset_query(self, query: str) -> None:
+        self.query_input.setText(query)
+        self.run_copilot()
+
+    def toggle_classic_results(self) -> None:
+        self.show_classic_results(self.classic_results_box.isHidden())
+
+    def show_classic_results(self, visible: bool) -> None:
+        self.classic_results_box.setVisible(visible)
+        if visible:
+            self.classic_toggle_button.setText("Ocultar busqueda clasica")
+        else:
+            self.classic_toggle_button.setText("Mostrar busqueda clasica")
 
     def _build_table_tab(self, title: str, headers: list[str]) -> QTableWidget:
         page = QWidget()
@@ -198,7 +270,7 @@ class SearchView(QWidget):
             session.commit()
 
         self.index_status_label.setText(
-            f"Índice {safe_text(status.get('backend'))} | documentos {safe_text(status.get('doc_count'))}"
+            f"Indice {safe_text(status.get('backend'))} | documentos {safe_text(status.get('doc_count'))}"
         )
 
     def reindex_fts(self) -> None:
@@ -208,6 +280,16 @@ class SearchView(QWidget):
         row_idx = self.copilot_table.currentRow()
         enabled = 0 <= row_idx < len(self.copilot_rows)
         self.open_context_button.setEnabled(enabled)
+        can_execute = False
+        can_open_map = False
+        if enabled:
+            row = self.copilot_rows[row_idx]
+            can_execute = bool(row.get("action_id"))
+            can_open_map = bool(
+                row.get("zone_label") or row.get("microzone_label") or row.get("event_id")
+            )
+        self.execute_action_button.setEnabled(can_execute)
+        self.open_map_button.setEnabled(can_open_map)
 
     def open_selected_context(self) -> None:
         row_idx = self.copilot_table.currentRow()
@@ -215,6 +297,28 @@ class SearchView(QWidget):
             return
         payload = dict(self.copilot_rows[row_idx])
         self.open_context_requested.emit(payload)
+
+    def open_selected_in_map(self) -> None:
+        row_idx = self.copilot_table.currentRow()
+        if row_idx < 0 or row_idx >= len(self.copilot_rows):
+            return
+        row = self.copilot_rows[row_idx]
+        payload = {
+            "zone_label": row.get("zone_label"),
+            "microzone_label": row.get("microzone_label"),
+            "event_id": row.get("event_id"),
+            "window_days": 14,
+        }
+        self.open_map_requested.emit(payload)
+
+    def execute_selected_action(self) -> None:
+        row_idx = self.copilot_table.currentRow()
+        if row_idx < 0 or row_idx >= len(self.copilot_rows):
+            return
+        row = dict(self.copilot_rows[row_idx])
+        if not row.get("action_id"):
+            return
+        self.execute_action_requested.emit(row)
 
     def run_copilot(self) -> None:
         query = self.query_input.text().strip()
@@ -228,7 +332,7 @@ class SearchView(QWidget):
         self.copilot_answer_label.setText(safe_text(payload.get("answer")))
         self.copilot_next_label.setText(f"Siguiente paso: {safe_text(payload.get('next_step'))}")
         self.summary_label.setText(
-            f"Copiloto: {safe_text(payload.get('intent'))} | consulta '{safe_text(payload.get('query'))}'."
+            f"Copiloto activo sobre '{safe_text(payload.get('query'))}' con lectura {safe_text(payload.get('intent'))}."
         )
 
         suggestions = payload.get("suggestions") or []
@@ -244,27 +348,19 @@ class SearchView(QWidget):
             for col_idx, value in enumerate(values):
                 self.copilot_table.setItem(row_idx, col_idx, QTableWidgetItem(value))
         self.copilot_table.resizeColumnsToContents()
+
         if suggestions:
             self.copilot_table.selectRow(0)
-            self.open_context_button.setEnabled(True)
+            self.on_copilot_row_selected()
         else:
+            self.execute_action_button.setEnabled(False)
             self.open_context_button.setEnabled(False)
+            self.open_map_button.setEnabled(False)
 
         search_result = payload.get("search_payload")
         if search_result:
-            index_status = search_result.get("index_status", {})
-            self.index_status_label.setText(
-                f"Ãndice {safe_text(index_status.get('backend'))} | documentos {safe_text(index_status.get('doc_count'))}"
-            )
-            summary = search_result["summary"]
-            self.summary_label.setText(
-                f"Busqueda general: {summary['total']} resultados. "
-                f"Activos {summary['assets']} | listings {summary['listings']} | raws {summary['raws']} | eventos {summary['events']}."
-            )
-            self._load_assets(search_result["assets"])
-            self._load_listings(search_result["listings"])
-            self._load_raws(search_result["raws"])
-            self._load_events(search_result["events"])
+            self.show_classic_results(True)
+            self._apply_search_payload(search_result, query_override="Busqueda general")
 
     def run_search(self) -> None:
         query = self.query_input.text().strip()
@@ -280,15 +376,19 @@ class SearchView(QWidget):
             )
             session.commit()
 
+        self.show_classic_results(True)
+        self._apply_search_payload(payload)
+
+    def _apply_search_payload(self, payload: dict, *, query_override: str | None = None) -> None:
         index_status = payload.get("index_status", {})
         self.index_status_label.setText(
-            f"Índice {safe_text(index_status.get('backend'))} | documentos {safe_text(index_status.get('doc_count'))}"
+            f"Indice {safe_text(index_status.get('backend'))} | documentos {safe_text(index_status.get('doc_count'))}"
         )
 
         summary = payload["summary"]
+        query_label = query_override or payload["query"]
         self.summary_label.setText(
-            f"Resultados para '{payload['query']}': {summary['total']} en total. "
-            f"Activos {summary['assets']} | listings {summary['listings']} | raws {summary['raws']} | eventos {summary['events']}."
+            f"{query_label}: {summary['total']} resultados. Activos {summary['assets']} | listings {summary['listings']} | raws {summary['raws']} | eventos {summary['events']}."
         )
 
         self._load_assets(payload["assets"])

@@ -74,11 +74,11 @@ class MainWindow(QMainWindow):
 
         self.page_defs = [
             PageDef(
-                "dashboard",
-                "Resumen",
-                "Vista corta del estado del sistema: base, Casafari, geografia y senales clave.",
-                "Trabajo diario",
-                DashboardView,
+                "search",
+                "Copiloto",
+                "Pregunta, pide una accion o abre contexto sin tener que navegar por toda la herramienta.",
+                "Entrada principal",
+                SearchView,
             ),
             PageDef(
                 "queue",
@@ -102,25 +102,32 @@ class MainWindow(QMainWindow):
                 MapView,
             ),
             PageDef(
-                "search",
-                "Buscar",
-                "Busqueda transversal por direccion, telefono, portal o texto libre.",
-                "Fuentes y datos",
-                SearchView,
+                "casafari",
+                "Casafari",
+                "Revision del matching y de los casos que todavia no quedan claros.",
+                "Trabajo diario",
+                CasafariLinksView,
+            ),
+            PageDef(
+                "dashboard",
+                "Resumen",
+                "Vista corta del estado del sistema: base, Casafari, geografia y senales clave.",
+                "Herramientas",
+                DashboardView,
             ),
             PageDef(
                 "import",
                 "Datos base",
                 "Sube o reimporta el baseline desde la app cuando cambie la base real.",
-                "Fuentes y datos",
+                "Herramientas",
                 ImportView,
             ),
             PageDef(
-                "casafari",
-                "Casafari",
-                "Revision del matching y de los casos que todavia no quedan claros.",
-                "Fuentes y datos",
-                CasafariLinksView,
+                "sync",
+                "Sincronizacion",
+                "Control de salud del scraping, login y cobertura del ultimo delta.",
+                "Herramientas",
+                SyncView,
             ),
             PageDef(
                 "assets",
@@ -136,122 +143,132 @@ class MainWindow(QMainWindow):
                 "Explorar",
                 ZonesView,
             ),
-            PageDef(
-                "sync",
-                "Sincronizacion",
-                "Control de salud del scraping, login y cobertura del ultimo delta.",
-                "Sistema",
-                SyncView,
-            ),
         ]
 
-        self.page_widgets: list[QWidget | None] = [None for _ in self.page_defs]
-        self.page_placeholders: list[QWidget] = [QWidget() for _ in self.page_defs]
-        self.page_index_by_key = {page.key: idx for idx, page in enumerate(self.page_defs)}
+        self.page_index_by_key = {page.key: index for index, page in enumerate(self.page_defs)}
+        self.page_widgets: list[QWidget | None] = [None] * len(self.page_defs)
+        self.page_placeholders: list[QWidget] = []
         self.nav_buttons: list[QPushButton] = []
         self._shell_metrics_cache: dict | None = None
         self._shell_metrics_loaded_at = 0.0
         self._shell_metrics_ttl_s = 5.0
 
-        shell = QWidget()
-        shell.setObjectName("AppRoot")
-        self.setCentralWidget(shell)
+        app_root = QWidget()
+        app_root.setObjectName("AppRoot")
+        self.setCentralWidget(app_root)
 
-        shell_layout = QHBoxLayout(shell)
-        shell_layout.setContentsMargins(0, 0, 0, 0)
-        shell_layout.setSpacing(0)
+        root_layout = QHBoxLayout(app_root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
         sidebar = self._build_sidebar()
-        shell_layout.addWidget(sidebar)
+        root_layout.addWidget(sidebar, 0)
 
         content = QWidget()
         content.setObjectName("ContentArea")
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(20, 18, 20, 18)
-        content_layout.setSpacing(14)
+        content_layout.setContentsMargins(18, 16, 18, 18)
+        content_layout.setSpacing(16)
 
-        top_shell = self._build_top_shell()
-        content_layout.addWidget(top_shell)
+        self.top_shell = self._build_top_shell()
+        content_layout.addWidget(self.top_shell, 0)
 
         self.stack = QStackedWidget()
-        for widget in self.page_placeholders:
-            self.stack.addWidget(widget)
         content_layout.addWidget(self.stack, 1)
+        root_layout.addWidget(content, 1)
 
-        shell_layout.addWidget(content, 1)
+        for page in self.page_defs:
+            placeholder = self._build_placeholder(page)
+            self.page_placeholders.append(placeholder)
+            self.stack.addWidget(placeholder)
 
         self._activate_page(0)
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(248)
+        sidebar.setFixedWidth(286)
 
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(18, 20, 18, 18)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 18, 16, 18)
+        layout.setSpacing(14)
 
-        eyebrow = QLabel("Nexus Madrid")
+        eyebrow = QLabel("NEXUS MADRID")
         eyebrow.setObjectName("BrandEyebrow")
         layout.addWidget(eyebrow)
 
-        title = QLabel("Consola operativa")
+        title = QLabel("Copiloto operativo")
         title.setObjectName("BrandTitle")
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Menos pantallas mentales: resume, filtra, decide y baja al mapa cuando haga falta."
+            "Usa la IA como entrada principal. Lo visual queda para validar, comparar o bajar al mapa."
         )
         subtitle.setObjectName("BrandSubtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        status_card = QFrame()
-        status_card.setObjectName("SidebarCard")
-        status_layout = QVBoxLayout(status_card)
-        status_layout.setContentsMargins(14, 14, 14, 14)
-        status_layout.setSpacing(6)
+        prompt_card = QFrame()
+        prompt_card.setObjectName("SidebarCard")
+        prompt_layout = QVBoxLayout(prompt_card)
+        prompt_layout.setContentsMargins(14, 14, 14, 14)
+        prompt_layout.setSpacing(10)
 
-        status_badge = QLabel("Principio UX")
-        status_badge.setObjectName("TopBadge")
-        status_layout.addWidget(status_badge, 0, Qt.AlignmentFlag.AlignLeft)
+        prompt_title = QLabel("Empieza aqui")
+        prompt_title.setObjectName("SectionLabel")
+        prompt_layout.addWidget(prompt_title)
 
-        status_text = QLabel(
-            "Primero se entiende que pasa. Despues se abre detalle. Lo avanzado no se mezcla con lo basico."
+        prompt_text = QLabel(
+            "Pregunta cosas como 'zonas para captar', 'casafari weak identity' o 'sincroniza Casafari'."
         )
-        status_text.setObjectName("SidebarFooter")
-        status_text.setWordWrap(True)
-        status_layout.addWidget(status_text)
-        layout.addWidget(status_card)
+        prompt_text.setObjectName("MetricDetail")
+        prompt_text.setWordWrap(True)
+        prompt_layout.addWidget(prompt_text)
 
-        button_group = QButtonGroup(self)
-        button_group.setExclusive(True)
-        button_group.idClicked.connect(self._activate_page)
+        for label, query in (
+            ("Captacion hoy", "zonas para captar"),
+            ("Casafari a revisar", "casafari weak identity"),
+            ("Sincronizar Casafari", "sincroniza casafari"),
+        ):
+            button = QPushButton(label)
+            button.setObjectName("GhostButton")
+            button.clicked.connect(lambda _checked=False, q=query: self._launch_copilot_prompt(q))
+            prompt_layout.addWidget(button)
 
-        current_group = None
-        for idx, page in enumerate(self.page_defs):
-            if page.nav_group != current_group:
-                current_group = page.nav_group
-                group_label = QLabel(current_group)
-                group_label.setObjectName("NavSection")
-                layout.addWidget(group_label)
+        layout.addWidget(prompt_card)
 
-            button = QPushButton(page.title)
-            button.setObjectName("NavButton")
-            button.setCheckable(True)
-            button_group.addButton(button, idx)
-            layout.addWidget(button)
-            self.nav_buttons.append(button)
+        self.nav_button_group = QButtonGroup(self)
+        self.nav_button_group.setExclusive(True)
 
-        layout.addStretch()
+        primary_keys = {"search", "queue", "radar", "map", "casafari"}
+        sections = [
+            ("Principal", [page for page in self.page_defs if page.key in primary_keys]),
+            ("Herramientas", [page for page in self.page_defs if page.key not in primary_keys]),
+        ]
+
+        for section_title, pages in sections:
+            section_label = QLabel(section_title)
+            section_label.setObjectName("NavSection")
+            layout.addWidget(section_label)
+            for page in pages:
+                button = QPushButton(page.title)
+                button.setObjectName("NavButton")
+                button.setCheckable(True)
+                button.clicked.connect(
+                    lambda _checked=False, idx=self.page_index_by_key[page.key]: self._activate_page(idx)
+                )
+                self.nav_button_group.addButton(button)
+                self.nav_buttons.append(button)
+                layout.addWidget(button)
+
+        layout.addStretch(1)
 
         footer = QLabel(
-            "La interfaz debe explicar el sistema sin obligarte a conocer su modelo interno."
+            "Menos paneles abiertos a la vez. Pregunta primero y baja a detalle solo cuando ya tienes foco."
         )
         footer.setObjectName("SidebarFooter")
         footer.setWordWrap(True)
         layout.addWidget(footer)
-
         return sidebar
 
     def _build_top_shell(self) -> QFrame:
@@ -268,7 +285,7 @@ class MainWindow(QMainWindow):
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
 
-        self.shell_title = QLabel("Resumen")
+        self.shell_title = QLabel("Copiloto")
         self.shell_title.setObjectName("ShellTitle")
         title_box.addWidget(self.shell_title)
 
@@ -278,7 +295,7 @@ class MainWindow(QMainWindow):
         title_box.addWidget(self.shell_subtitle)
         header.addLayout(title_box, 1)
 
-        self.shell_badge = QLabel("Trabajo diario")
+        self.shell_badge = QLabel("Entrada principal")
         self.shell_badge.setObjectName("TopBadge")
         header.addWidget(self.shell_badge, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -308,6 +325,42 @@ class MainWindow(QMainWindow):
 
         return shell
 
+    def _build_placeholder(self, page: PageDef) -> QWidget:
+        placeholder = QWidget()
+        placeholder.setObjectName("PageScrollContainer")
+
+        layout = QVBoxLayout(placeholder)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(10)
+
+        title = QLabel(page.title)
+        title.setObjectName("PageTitle")
+        layout.addWidget(title)
+
+        subtitle = QLabel(page.subtitle)
+        subtitle.setObjectName("PageSubtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        hint = QLabel("Cargando modulo...")
+        hint.setObjectName("MetricDetail")
+        layout.addWidget(hint)
+
+        layout.addStretch(1)
+        return placeholder
+
+    def _launch_copilot_prompt(self, query: str) -> None:
+        search_index = self.page_index_by_key.get("search")
+        if search_index is None:
+            return
+
+        self._activate_page(search_index)
+        search_view = self._get_page_widget("search", SearchView)
+        if search_view is None:
+            return
+        search_view.ensure_loaded()
+        search_view.run_preset_query(query)
+
     def _ensure_page(self, index: int) -> QWidget:
         existing = self.page_widgets[index]
         if existing is not None:
@@ -327,6 +380,8 @@ class MainWindow(QMainWindow):
             widget.open_in_map_requested.connect(self._open_map_with_context)
         if page_key == "search" and isinstance(widget, SearchView):
             widget.open_context_requested.connect(self._open_copilot_context)
+            widget.open_map_requested.connect(self._open_map_with_context)
+            widget.execute_action_requested.connect(self._execute_copilot_action)
 
         return widget
 
@@ -410,6 +465,65 @@ class MainWindow(QMainWindow):
                 }
             )
 
+    def _execute_copilot_action(self, payload: dict) -> None:
+        action_id = str(payload.get("action_id") or "").strip().lower()
+
+        if action_id == "search_reindex":
+            page_index = self.page_index_by_key.get("search")
+            if page_index is None:
+                return
+            self._activate_page(page_index)
+            search_view = self._get_page_widget("search", SearchView)
+            if search_view is not None:
+                search_view.ensure_loaded()
+                search_view.reindex_fts()
+            return
+
+        if action_id == "casafari_prepare_session":
+            page_index = self.page_index_by_key.get("sync")
+            if page_index is None:
+                return
+            self._activate_page(page_index)
+            sync_view = self._get_page_widget("sync", SyncView)
+            if sync_view is not None:
+                sync_view.ensure_loaded()
+                sync_view.start_prepare_session()
+            return
+
+        if action_id == "casafari_sync":
+            page_index = self.page_index_by_key.get("sync")
+            if page_index is None:
+                return
+            self._activate_page(page_index)
+            sync_view = self._get_page_widget("sync", SyncView)
+            if sync_view is not None:
+                sync_view.ensure_loaded()
+                sync_view.start_sync()
+            return
+
+        if action_id == "casafari_reconcile":
+            page_index = self.page_index_by_key.get("casafari")
+            if page_index is None:
+                return
+            self._activate_page(page_index)
+            casafari_view = self._get_page_widget("casafari", CasafariLinksView)
+            if casafari_view is not None:
+                casafari_view.refresh_all()
+                casafari_view.start_rerun()
+
+    def _page_hint(self, key: str) -> str:
+        hints = {
+            "search": "Empieza por una pregunta corta. Si hace falta bajar a detalle, el copiloto te llevara al modulo correcto.",
+            "queue": "Filtra primero y abre detalle solo sobre las oportunidades que ya pintan accionables.",
+            "radar": "Compara pocas zonas a la vez. Usa el mapa cuando necesites contexto espacial y deja fuera lo accesorio.",
+            "map": "Valida en mapa lo que ya has detectado con el copiloto o con el radar, no al reves.",
+            "casafari": "Usa Casafari para revisar solo los casos dudosos o relanzar acciones operativas.",
+        }
+        return hints.get(
+            key,
+            "La navegacion secundaria queda como apoyo. Si una duda es transversal, vuelve al copiloto.",
+        )
+
     def _activate_page(self, index: int) -> None:
         self._ensure_page(index)
         self.stack.setCurrentIndex(index)
@@ -417,9 +531,7 @@ class MainWindow(QMainWindow):
         self.shell_title.setText(page.title)
         self.shell_subtitle.setText(page.subtitle)
         self.shell_badge.setText(page.nav_group)
-        self.shell_hint.setText(
-            "Empieza por la lectura corta. Usa filtros para centrarte y abre detalle solo cuando ya sabes que estas buscando."
-        )
+        self.shell_hint.setText(self._page_hint(page.key))
 
         for idx, button in enumerate(self.nav_buttons):
             button.setChecked(idx == index)

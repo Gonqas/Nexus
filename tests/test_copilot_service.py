@@ -90,3 +90,15 @@ def test_copilot_falls_back_to_search(monkeypatch) -> None:
         assert payload["search_payload"]["summary"]["total"] == 1
     finally:
         session.close()
+
+
+def test_copilot_detects_operational_action() -> None:
+    session = make_session()
+    try:
+        payload = copilot_service.run_copilot_query(session, "reconciliar pendientes casafari")
+
+        assert payload["intent"] == "action_reconcile"
+        assert payload["suggestions"][0]["action_id"] == "casafari_reconcile"
+        assert payload["suggestions"][0]["target_view"] == "casafari"
+    finally:
+        session.close()
